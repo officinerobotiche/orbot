@@ -31,13 +31,11 @@
 import telegram
 import yaml
 import argparse
-import logging
 # Load ORbot
 from .orbot import ORbot
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     parser = argparse.ArgumentParser(description='Officine Robotiche bot manager')
     parser.add_argument('-s', dest="settings", help='path of setting file', default='settings.yml')
     # Pare arguments
@@ -56,6 +54,7 @@ def main():
     print(" - ID:", infobot["id"])
     # Load ORbot
     orbot = ORbot(settings)
+    print("ORbot started")
     # Run the bot
     orbot.runner()
 

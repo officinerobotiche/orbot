@@ -1,2 +1,4 @@
 python-telegram-bot
 pyyaml
+#emoji
+#emoji-country-flag

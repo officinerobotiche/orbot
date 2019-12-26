@@ -29,7 +29,14 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from telegram.ext import Updater
+import logging
+from telegram.ext import Updater, CommandHandler
+from emoji import emojize
+from flag import flagize
+
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ORbot:
@@ -37,12 +44,54 @@ class ORbot:
     def __init__(self, settings):
         # Load settings
         telebot = settings['bot']
+        self.ORdata = settings['or']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
         self.updater = Updater(telebot['token'], use_context=True)
+        # Get the dispatcher to register handlers
+        dp = self.updater.dispatcher
+        # Add commands
+        dp.add_handler(CommandHandler("start", self.start))
+        dp.add_handler(CommandHandler("help", self.help))
+        dp.add_handler(CommandHandler("channels", self.channels))
+        # log all errors
+        dp.add_error_handler(self.error)
 
     def runner(self):
+        # Start the Bot
+        self.updater.start_polling()
+        # Run the bot until you press Ctrl-C or the process receives SIGINT,
+        # SIGTERM or SIGABRT. This should be used most of the time, since
+        # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
+
+    def start(self, update, context):
+        """ Start ORbot """
+        user = update.message.from_user
+        logger.info(f"New user join {user['first_name']}")
+        update.message.reply_text('Welcome to ORbot')
+
+    def channels(self, update, context):
+        """ List all channels availables """
+        message = "All channels availables are:\n"
+        for ch in self.ORdata['channels']:
+            channel = self.ORdata['channels'][ch]
+            link = channel['link']
+            lang = channel['lang']
+            message += f" - {lang} <a href='{link}'>{ch}</a>\n"
+        update.message.reply_text(message, parse_mode='HTML')
+
+    def help(self, update, context):
+        """ Help list of all commands """
+        message = "All commands available in this bot are show below \n"
+        message += " - /start Start your bot \n"
+        message += " - /channels All channels \n"
+        message += " - /help This help \n"
+        update.message.reply_text(message, parse_mode='HTML')
+
+    def error(self, update, context):
+        """Log Errors caused by Updates."""
+        logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 # EOF
