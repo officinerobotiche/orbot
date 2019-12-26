@@ -29,9 +29,20 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+from telegram.ext import Updater
+
+
 class ORbot:
 
-    def __init__(self):
-        print("ORBOT")
+    def __init__(self, settings):
+        # Load settings
+        telebot = settings['bot']
+        # Create the Updater and pass it your bot's token.
+        # Make sure to set use_context=True to use the new context based callbacks
+        # Post version 12 this will no longer be necessary
+        self.updater = Updater(telebot['token'], use_context=True)
+
+    def runner(self):
+        self.updater.idle()
 
 # EOF

@@ -32,6 +32,8 @@ import telegram
 import yaml
 import argparse
 import logging
+# Load ORbot
+from .orbot import ORbot
 
 
 def main():
@@ -52,6 +54,10 @@ def main():
     print(" - name:", infobot["first_name"])
     print(" - username:", infobot["username"])
     print(" - ID:", infobot["id"])
+    # Load ORbot
+    orbot = ORbot(settings)
+    # Run the bot
+    orbot.runner()
 
 
 if __name__ == "__main__":
