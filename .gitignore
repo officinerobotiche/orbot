@@ -20,3 +20,6 @@ venv/
 
 # IDE
 .vscode/
+
+# Test config
+settings.yml

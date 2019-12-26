@@ -28,8 +28,25 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, 
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import telegram
+import yaml
+import argparse
+
 def main():
+    parser = argparse.ArgumentParser(description='Officine Robotiche bot manager')
+    parser.add_argument('-s', dest="settings", help='path of setting file', default='settings.yml')
+    # Pare arguments
+    args = parser.parse_args()
+
     print("Telegram bot")
+    # Load settings
+    with open(args.settings) as stream:
+        settings = yaml.load(stream, Loader=yaml.FullLoader)
+    # Print settings
+    print(settings)
+    # load bot
+    telebot = settings['bot']
+    bot = telegram.Bot(token=telebot['token'])
 
 if __name__ == "__main__":
     main()
