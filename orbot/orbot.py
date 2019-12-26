@@ -28,10 +28,7 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# flake8: noqa
+class ORbot:
 
-from .orbot import ORbot
-
-__author__ = "Raffaello Bonghi <raffaello.bonghi@officinerobotiche.it>"
-__version__ = "0.0.1"
-# EOF
+    def __init__(self):
+        print("ORBOT")
