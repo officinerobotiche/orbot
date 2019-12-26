@@ -47,10 +47,7 @@ from os import path
 # Python 3 only projects can skip this import
 from io import open
 # Launch command
-import subprocess as sp
-import shlex
 import os
-import sys
 import re
 
 here = path.abspath(path.dirname(__file__))

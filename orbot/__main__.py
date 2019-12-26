@@ -33,6 +33,7 @@ import yaml
 import argparse
 import logging
 
+
 def main():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     parser = argparse.ArgumentParser(description='Officine Robotiche bot manager')
@@ -51,6 +52,7 @@ def main():
     print(" - name:", infobot["first_name"])
     print(" - username:", infobot["username"])
     print(" - ID:", infobot["id"])
+
 
 if __name__ == "__main__":
     main()
