@@ -53,11 +53,11 @@ import os
 import sys
 import re
 
-
-
 here = path.abspath(path.dirname(__file__))
 project_homepage = "https://github.com/officinerobotiche/orbot"
 
+with open(path.join(here, 'requirements.txt'), encoding='utf-8') as f:
+    requirements = f.read().splitlines()
 
 # Get the long description from the README file
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
@@ -90,6 +90,7 @@ setup(
         "Bug Reports": (project_homepage + "/issues"),
         "Source": (project_homepage + "/tree/master")
     },
+    install_requires=requirements,
     packages=find_packages(exclude=['examples', 'scripts', 'tests']),  # Required
     keywords=("telegram bot calendar manager"
               ),
