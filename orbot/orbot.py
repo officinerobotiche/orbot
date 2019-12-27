@@ -31,12 +31,16 @@
 
 import logging
 from telegram.ext import Updater, CommandHandler
-from emoji import emojize
-from flag import flagize
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+OFFSET = 127462 - ord('A')
+
+
+def flag(code):
+    code = code.upper()
+    return chr(ord(code[0]) + OFFSET) + chr(ord(code[1]) + OFFSET)
 
 
 class ORbot:
@@ -78,7 +82,7 @@ class ORbot:
         for ch in self.ORdata['channels']:
             channel = self.ORdata['channels'][ch]
             link = channel['link']
-            lang = channel['lang']
+            lang = flag(channel['lang'])
             message += f" - {lang} <a href='{link}'>{ch}</a>\n"
         update.message.reply_text(message, parse_mode='HTML')
 
