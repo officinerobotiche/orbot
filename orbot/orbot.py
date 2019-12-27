@@ -31,12 +31,19 @@
 
 import logging
 from telegram.ext import Updater, CommandHandler
+import pickle
+import os.path
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from functools import wraps
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+# Offset flags
 OFFSET = 127462 - ord('A')
-
+# If modifying these scopes, delete the file token.pickle.
+SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
 
 def flag(code):
     code = code.upper()
@@ -63,6 +70,8 @@ class ORbot:
         self.ORdata = settings['or']
         # List of admins
         self.LIST_OF_ADMINS = telebot['admins']
+        # Load Google drive service
+        self.service = self._loadDrive(settings['drive'])
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
@@ -76,6 +85,38 @@ class ORbot:
         dp.add_handler(CommandHandler("settings", self.settings))
         # log all errors
         dp.add_error_handler(self.error)
+        # Call the Drive v3 API
+        results = self.service.files().list(
+            pageSize=10, fields="nextPageToken, files(id, name)").execute()
+        items = results.get('files', [])
+
+        if not items:
+            print('No files found.')
+        else:
+            print('Files:')
+            for item in items:
+                print(u'{0} ({1})'.format(item['name'], item['id']))
+
+    def _loadDrive(self, credentials):
+        creds = None
+        # The file token.pickle stores the user's access and refresh tokens, and is
+        # created automatically when the authorization flow completes for the first
+        # time.
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+        # If there are no (valid) credentials available, let the user log in.
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+            # Save the credentials for the next run
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+        # Init Drive service
+        return build('drive', 'v3', credentials=creds)
 
     def runner(self):
         # Start the Bot

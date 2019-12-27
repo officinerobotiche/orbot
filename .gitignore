@@ -23,3 +23,5 @@ venv/
 
 # Test config
 settings.yml
+token.pickle
+credentials.json

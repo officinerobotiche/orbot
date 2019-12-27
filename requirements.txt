@@ -1,4 +1,10 @@
-python-telegram-bot
+# Common
 pyyaml
+# Telegram bot
+python-telegram-bot
 #emoji
 #emoji-country-flag
+# Google drive
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
