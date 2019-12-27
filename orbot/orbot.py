@@ -31,7 +31,7 @@
 
 import logging
 from telegram.ext import Updater, CommandHandler
-
+from functools import wraps
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,12 +43,26 @@ def flag(code):
     return chr(ord(code[0]) + OFFSET) + chr(ord(code[1]) + OFFSET)
 
 
+def restricted(func):
+    @wraps(func)
+    def wrapped(self, update, context, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in self.LIST_OF_ADMINS:
+            logger.info(f"Unauthorized access denied for {user_id}.")
+            update.message.reply_text("Unauthorized access denied.")
+            return
+        return func(self, update, context, *args, **kwargs)
+    return wrapped
+
+
 class ORbot:
 
     def __init__(self, settings):
         # Load settings
         telebot = settings['bot']
         self.ORdata = settings['or']
+        # List of admins
+        self.LIST_OF_ADMINS = telebot['admins']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
@@ -59,6 +73,7 @@ class ORbot:
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler("channels", self.channels))
+        dp.add_handler(CommandHandler("settings", self.settings))
         # log all errors
         dp.add_error_handler(self.error)
 
@@ -69,6 +84,11 @@ class ORbot:
         # SIGTERM or SIGABRT. This should be used most of the time, since
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
+
+    @restricted
+    def settings(self, update, context):
+        """ Bot manager """
+        update.message.reply_text('ORbot manager')  
 
     def start(self, update, context):
         """ Start ORbot """
@@ -82,6 +102,7 @@ class ORbot:
         for ch in self.ORdata['channels']:
             channel = self.ORdata['channels'][ch]
             link = channel['link']
+            # Make flag lang
             lang = flag(channel['lang'])
             message += f" - {lang} <a href='{link}'>{ch}</a>\n"
         update.message.reply_text(message, parse_mode='HTML')
