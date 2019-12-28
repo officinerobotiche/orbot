@@ -71,7 +71,7 @@ class ORbot:
         # List of admins
         self.LIST_OF_ADMINS = telebot['admins']
         # Load Google drive service
-        self.service = self._loadDrive(settings['drive'])
+        # self.service = self._loadDriveService(settings['drive'])
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
@@ -85,11 +85,12 @@ class ORbot:
         dp.add_handler(CommandHandler("settings", self.settings))
         # log all errors
         dp.add_error_handler(self.error)
+
+    def testDrive(self):
         # Call the Drive v3 API
         results = self.service.files().list(
             pageSize=10, fields="nextPageToken, files(id, name)").execute()
         items = results.get('files', [])
-
         if not items:
             print('No files found.')
         else:
@@ -97,7 +98,7 @@ class ORbot:
             for item in items:
                 print(u'{0} ({1})'.format(item['name'], item['id']))
 
-    def _loadDrive(self, credentials):
+    def _loadDriveSservice(self, credentials):
         creds = None
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
@@ -135,7 +136,9 @@ class ORbot:
         """ Start ORbot """
         user = update.message.from_user
         logger.info(f"New user join {user['first_name']}")
-        update.message.reply_text('Welcome to ORbot')
+        message = 'Welcome to ORbot'
+        # update.message.reply_text(message)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
     def channels(self, update, context):
         """ List all channels availables """
@@ -146,7 +149,10 @@ class ORbot:
             # Make flag lang
             lang = flag(channel['lang'])
             message += f" - {lang} <a href='{link}'>{ch}</a>\n"
-        update.message.reply_text(message, parse_mode='HTML')
+        # Send message with reply in group
+        # update.message.reply_text(message, parse_mode='HTML')
+        # Send message without reply in group
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
     def help(self, update, context):
         """ Help list of all commands """
@@ -154,7 +160,8 @@ class ORbot:
         message += " - /start Start your bot \n"
         message += " - /channels All channels \n"
         message += " - /help This help \n"
-        update.message.reply_text(message, parse_mode='HTML')
+        # update.message.reply_text(message, parse_mode='HTML')
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
     def error(self, update, context):
         """Log Errors caused by Updates."""
