@@ -31,6 +31,7 @@
 
 import logging
 from telegram.ext import Updater, CommandHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import pickle
 import os.path
 from googleapiclient.discovery import build
@@ -50,6 +51,27 @@ def flag(code):
     return chr(ord(code[0]) + OFFSET) + chr(ord(code[1]) + OFFSET)
 
 
+def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
+    menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
+    if header_buttons:
+        menu.insert(0, [header_buttons])
+    if footer_buttons:
+        menu.append([footer_buttons])
+    return menu
+
+
+def register(func):
+    @wraps(func)
+    def wrapped(self, update, context, *args, **kwargs):
+        type_chat = update.effective_chat.type
+        chat_id = update.effective_chat.id
+        if type_chat == 'group':
+            if chat_id not in self.groups:
+                self.groups[chat_id] = update.effective_chat.title
+        return func(self, update, context, *args, **kwargs)
+    return wrapped
+
+
 def restricted(func):
     @wraps(func)
     def wrapped(self, update, context, *args, **kwargs):
@@ -61,17 +83,21 @@ def restricted(func):
         return func(self, update, context, *args, **kwargs)
     return wrapped
 
-def group(func):
-    @wraps(func)
-    def wrapped(self, update, context, *args, **kwargs):
-        type_chat = update.effective_chat.type
-        if type_chat == 'group':
-            return func(self, update, context, *args, **kwargs)
-        else:
-            logger.info(f"Unauthorized access denied for {type_chat}.")
-            update.message.reply_text("Unauthorized access denied.")
-            return
-    return wrapped
+
+def rtype(rtype):
+    def group(func):
+        @wraps(func)
+        def wrapped(self, update, context, *args, **kwargs):
+            type_chat = update.effective_chat.type
+            if type_chat == rtype:
+                return func(self, update, context, *args, **kwargs)
+            else:
+                logger.info(f"Unauthorized access denied for {type_chat}.")
+                context.bot.send_message(chat_id=update.effective_chat.id, text="Unauthorized access denied.")
+                return
+        return wrapped
+    return group
+
 
 class ORbot:
 
@@ -96,6 +122,9 @@ class ORbot:
         dp.add_handler(CommandHandler("settings", self.settings))
         # log all errors
         dp.add_error_handler(self.error)
+        # Allow chats
+        # TODO: move to drive
+        self.groups = {}
 
     def testDrive(self):
         # Call the Drive v3 API
@@ -139,23 +168,29 @@ class ORbot:
         self.updater.idle()
 
     @restricted
-    @group
+    @rtype('private')
     def settings(self, update, context):
         """ Bot manager """
         chat_id = update.effective_chat.id
         message = 'ORbot manager\n'
-        message += f'chat_id={chat_id}'
+        message += f'chat_id={chat_id}\n'
+        message += f'{update.effective_user.id}\n'
         message += f'{update.effective_chat.type}'
-        context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML')  
+        groups_list = build_menu([InlineKeyboardButton(self.groups[name], callback_data="test") for name in self.groups], 1)
+        reply_markup = InlineKeyboardMarkup(groups_list)
+        context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)  
 
+    @register
     def start(self, update, context):
         """ Start ORbot """
+        print(self.groups)
         user = update.message.from_user
         logger.info(f"New user join {user['first_name']}")
         message = 'Welcome to ORbot'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
-    @group
+    @register
+    @rtype('group')
     def channels(self, update, context):
         """ List all channels availables """
         message = "All channels availables are:\n"
