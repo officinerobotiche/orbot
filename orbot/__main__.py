@@ -48,6 +48,7 @@ def main():
     bot = telegram.Bot(token=telebot['token'])
     # Load information bot
     infobot = bot.get_me()
+    print(infobot)
     print("Bot info:")
     print(" - name:", infobot["first_name"])
     print(" - username:", infobot["username"])

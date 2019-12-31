@@ -61,6 +61,17 @@ def restricted(func):
         return func(self, update, context, *args, **kwargs)
     return wrapped
 
+def group(func):
+    @wraps(func)
+    def wrapped(self, update, context, *args, **kwargs):
+        type_chat = update.effective_chat.type
+        if type_chat == 'group':
+            return func(self, update, context, *args, **kwargs)
+        else:
+            logger.info(f"Unauthorized access denied for {type_chat}.")
+            update.message.reply_text("Unauthorized access denied.")
+            return
+    return wrapped
 
 class ORbot:
 
@@ -128,18 +139,23 @@ class ORbot:
         self.updater.idle()
 
     @restricted
+    @group
     def settings(self, update, context):
         """ Bot manager """
-        update.message.reply_text('ORbot manager')  
+        chat_id = update.effective_chat.id
+        message = 'ORbot manager\n'
+        message += f'chat_id={chat_id}'
+        message += f'{update.effective_chat.type}'
+        context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML')  
 
     def start(self, update, context):
         """ Start ORbot """
         user = update.message.from_user
         logger.info(f"New user join {user['first_name']}")
         message = 'Welcome to ORbot'
-        # update.message.reply_text(message)
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
+    @group
     def channels(self, update, context):
         """ List all channels availables """
         message = "All channels availables are:\n"
