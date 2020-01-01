@@ -29,35 +29,45 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import telegram
-import yaml
+import json
 import argparse
+# Drive manager
+from .drive import Drive
 # Load ORbot
 from .orbot import ORbot
 
 
 def main():
     parser = argparse.ArgumentParser(description='Officine Robotiche bot manager')
-    parser.add_argument('-s', dest="settings", help='path of setting file', default='settings.yml')
-    # Pare arguments
+    parser.add_argument('-s', dest="settings", help='path of setting file', default='config/settings.json')
+    # Google Drive
+    #drive = Drive(settings['drive'])
+    #drive.testDrive()
+    #drive.upload()
+    # Parse arguments
     args = parser.parse_args()
     # Load settings
     with open(args.settings) as stream:
-        settings = yaml.load(stream, Loader=yaml.FullLoader)
-    # load bot
-    telebot = settings['bot']
-    bot = telegram.Bot(token=telebot['token'])
-    # Load information bot
-    infobot = bot.get_me()
-    print(infobot)
-    print("Bot info:")
-    print(" - name:", infobot["first_name"])
-    print(" - username:", infobot["username"])
-    print(" - ID:", infobot["id"])
-    # Load ORbot
-    orbot = ORbot(settings)
-    print("ORbot started")
-    # Run the bot
-    orbot.runner()
+        settings = json.load(stream)
+    # Run telegram bot
+    if 'telegram' in settings:
+        # load bot
+        telebot = settings['telegram']
+        bot = telegram.Bot(token=telebot['token'])
+        # Load information bot
+        infobot = bot.get_me()
+        print(infobot)
+        print("Bot info:")
+        print(" - name:", infobot["first_name"])
+        print(" - username:", infobot["username"])
+        print(" - ID:", infobot["id"])
+        # Telegram ORbot
+        orbot = ORbot(settings['telegram'])
+        print("ORbot started")
+        # Run the bot
+        orbot.runner()
+    else:
+        print("No telegram config defined")
 
 
 if __name__ == "__main__":

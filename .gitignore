@@ -22,6 +22,6 @@ venv/
 .vscode/
 
 # Test config
-settings.yml
+config/
 token.pickle
 credentials.json

@@ -29,22 +29,18 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+from os import path
+import json
 import logging
-from telegram.ext import Updater, CommandHandler
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import pickle
-import os.path
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+import csv
 from functools import wraps
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 # Offset flags
 OFFSET = 127462 - ord('A')
-# If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
 
 def flag(code):
     code = code.upper()
@@ -103,61 +99,47 @@ class ORbot:
 
     def __init__(self, settings):
         # Load settings
-        telebot = settings['bot']
-        self.ORdata = settings['or']
+        self.channels = []
+        channels_file = settings.get('channels', 'config/channels.json')
+        if path.exists(channels_file):
+            with open(channels_file) as stream:
+                self.channels = json.load(stream)
         # List of admins
-        self.LIST_OF_ADMINS = telebot['admins']
-        # Load Google drive service
-        # self.service = self._loadDriveService(settings['drive'])
+        self.LIST_OF_ADMINS = settings['admins']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
-        self.updater = Updater(telebot['token'], use_context=True)
+        self.updater = Updater(settings['token'], use_context=True)
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Add commands
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
-        dp.add_handler(CommandHandler("channels", self.channels))
-        dp.add_handler(CommandHandler("settings", self.settings))
+        dp.add_handler(CommandHandler("channels", self.cmd_channels))
+        dp.add_handler(CallbackQueryHandler(self.button))
+        dp.add_handler(CommandHandler("settings", self.cmd_settings))
+        # Unknown handler
+        unknown_handler = MessageHandler(Filters.command, self.unknown)
+        dp.add_handler(unknown_handler)
+        # Add group handle
+        add_group_handle = MessageHandler(Filters.status_update.new_chat_members, self.add_group)
+        dp.add_handler(add_group_handle)
         # log all errors
         dp.add_error_handler(self.error)
         # Allow chats
         # TODO: move to drive
         self.groups = {}
 
-    def testDrive(self):
-        # Call the Drive v3 API
-        results = self.service.files().list(
-            pageSize=10, fields="nextPageToken, files(id, name)").execute()
-        items = results.get('files', [])
-        if not items:
-            print('No files found.')
-        else:
-            print('Files:')
-            for item in items:
-                print(u'{0} ({1})'.format(item['name'], item['id']))
-
-    def _loadDriveSservice(self, credentials):
-        creds = None
-        # The file token.pickle stores the user's access and refresh tokens, and is
-        # created automatically when the authorization flow completes for the first
-        # time.
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-        # If there are no (valid) credentials available, let the user log in.
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-        # Init Drive service
-        return build('drive', 'v3', credentials=creds)
+    def saveFile(self, csv_file, dict_data):
+        csv_columns = ['No','Name','Country']
+        try:
+            with open(csv_file, 'w') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+                writer.writeheader()
+                for data in dict_data:
+                    writer.writerow(data)
+        except IOError:
+            print("I/O error")
 
     def runner(self):
         # Start the Bot
@@ -167,9 +149,16 @@ class ORbot:
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
 
+    def unknown(self, update, context):
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
+
+    def add_group(self, update, context):
+        for member in update.message.new_chat_members:
+            update.message.reply_text("{username} add group".format(username=member.username))
+
     @restricted
     @rtype('private')
-    def settings(self, update, context):
+    def cmd_settings(self, update, context):
         """ Bot manager """
         chat_id = update.effective_chat.id
         message = 'ORbot manager\n'
@@ -178,7 +167,11 @@ class ORbot:
         message += f'{update.effective_chat.type}'
         groups_list = build_menu([InlineKeyboardButton(self.groups[name], callback_data="test") for name in self.groups], 1)
         reply_markup = InlineKeyboardMarkup(groups_list)
-        context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)  
+        context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    def button(self, update, context):
+        query = update.callback_query
+        query.edit_message_text(text="Selected option: {}".format(query.data))
 
     @register
     def start(self, update, context):
@@ -191,15 +184,15 @@ class ORbot:
 
     @register
     @rtype('group')
-    def channels(self, update, context):
+    def cmd_channels(self, update, context):
         """ List all channels availables """
         message = "All channels availables are:\n"
-        for ch in self.ORdata['channels']:
-            channel = self.ORdata['channels'][ch]
+        for channel in self.channels:
+            name = channel['name']
             link = channel['link']
             # Make flag lang
             lang = flag(channel['lang'])
-            message += f" - {lang} <a href='{link}'>{ch}</a>\n"
+            message += f" - {lang} <a href='{link}'>{name}</a>\n"
         # Send message with reply in group
         # update.message.reply_text(message, parse_mode='HTML')
         # Send message without reply in group
