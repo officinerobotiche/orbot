@@ -42,6 +42,20 @@ logger = logging.getLogger(__name__)
 # Offset flags
 OFFSET = 127462 - ord('A')
 
+def hasNumbers(inputString):
+    return any(char.isdigit() for char in inputString)
+
+def saveFile(csv_file, dict_data):
+    csv_columns = ['No','Name','Country']
+    try:
+        with open(csv_file, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+            writer.writeheader()
+            for data in dict_data:
+                writer.writerow(data)
+    except IOError:
+        print("I/O error")
+
 def flag(code):
     code = code.upper()
     return chr(ord(code[0]) + OFFSET) + chr(ord(code[1]) + OFFSET)
@@ -62,6 +76,9 @@ def register(func):
         type_chat = update.effective_chat.type
         chat_id = update.effective_chat.id
         if type_chat == 'group':
+            for ch in self.channels:
+                if ch['id'] == chat_id:
+                    return func(self, update, context, *args, **kwargs)
             if chat_id not in self.groups:
                 self.groups[chat_id] = update.effective_chat.title
         return func(self, update, context, *args, **kwargs)
@@ -98,14 +115,14 @@ def rtype(rtype):
 class ORbot:
 
     def __init__(self, settings):
+        # List of admins
+        self.LIST_OF_ADMINS = settings['admins']
         # Load settings
         self.channels = []
         channels_file = settings.get('channels', 'config/channels.json')
         if path.exists(channels_file):
             with open(channels_file) as stream:
                 self.channels = json.load(stream)
-        # List of admins
-        self.LIST_OF_ADMINS = settings['admins']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
@@ -116,7 +133,7 @@ class ORbot:
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler("channels", self.cmd_channels))
-        dp.add_handler(CallbackQueryHandler(self.button))
+        dp.add_handler(CallbackQueryHandler(self.button, pattern='CH'))
         dp.add_handler(CommandHandler("settings", self.cmd_settings))
         # Unknown handler
         unknown_handler = MessageHandler(Filters.command, self.unknown)
@@ -129,17 +146,6 @@ class ORbot:
         # Allow chats
         # TODO: move to drive
         self.groups = {}
-
-    def saveFile(self, csv_file, dict_data):
-        csv_columns = ['No','Name','Country']
-        try:
-            with open(csv_file, 'w') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
-                writer.writeheader()
-                for data in dict_data:
-                    writer.writerow(data)
-        except IOError:
-            print("I/O error")
 
     def runner(self):
         # Start the Bot
@@ -154,29 +160,46 @@ class ORbot:
 
     def add_group(self, update, context):
         for member in update.message.new_chat_members:
-            update.message.reply_text("{username} add group".format(username=member.username))
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"{member.username} add group")
 
     @restricted
     @rtype('private')
     def cmd_settings(self, update, context):
         """ Bot manager """
         chat_id = update.effective_chat.id
-        message = 'ORbot manager\n'
-        message += f'chat_id={chat_id}\n'
-        message += f'{update.effective_user.id}\n'
-        message += f'{update.effective_chat.type}'
-        groups_list = build_menu([InlineKeyboardButton(self.groups[name], callback_data="test") for name in self.groups], 1)
-        reply_markup = InlineKeyboardMarkup(groups_list)
+        buttons = [InlineKeyboardButton("NEW " + self.groups[name], callback_data=f"CH DATA {name}") for name in self.groups]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
+        message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
     def button(self, update, context):
         query = update.callback_query
-        query.edit_message_text(text="Selected option: {}".format(query.data))
+        data = query.data.split()
+        if int(data[2]) in self.groups:
+            name = self.groups[int(data[2])]
+            if data[1] == 'DATA':
+                buttons = [InlineKeyboardButton("Save", callback_data=f"CH SAVE {data[2]}"),
+                        InlineKeyboardButton("Remove", callback_data=f"CH REMOVE {data[2]}")]
+                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+                query.edit_message_text(text=f"{name} - Select option:", reply_markup=reply_markup)
+            elif data[1] == "SAVE":
+                # Add in channels
+                self.channels += [{'title': self.groups[int(data[2])], 'id': int(data[2])}]
+                # Remove from groups list
+                del self.groups[int(data[2])]
+                # edit message
+                query.edit_message_text(text=f"{name} Saved")
+            else:
+                # Remove from groups list
+                del self.groups[int(data[2])]
+                # edit message
+                query.edit_message_text(text=f"{name} Removed")
+        else:
+            query.edit_message_text(text="Error")
 
     @register
     def start(self, update, context):
         """ Start ORbot """
-        print(self.groups)
         user = update.message.from_user
         logger.info(f"New user join {user['first_name']}")
         message = 'Welcome to ORbot'
@@ -188,10 +211,10 @@ class ORbot:
         """ List all channels availables """
         message = "All channels availables are:\n"
         for channel in self.channels:
-            name = channel['name']
-            link = channel['link']
+            name = channel['title']
+            link = channel.get('link', '#')
             # Make flag lang
-            lang = flag(channel['lang'])
+            lang = flag(channel.get('lang', 'ita'))
             message += f" - {lang} <a href='{link}'>{name}</a>\n"
         # Send message with reply in group
         # update.message.reply_text(message, parse_mode='HTML')
