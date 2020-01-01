@@ -46,7 +46,11 @@ def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
 def saveFile(csv_file, dict_data):
-    csv_columns = ['No','Name','Country']
+    csv_columns = []
+    if dict_data:
+        csv_columns = list(dict_data[0].keys())
+    else:
+        return
     try:
         with open(csv_file, 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
@@ -55,6 +59,22 @@ def saveFile(csv_file, dict_data):
                 writer.writerow(data)
     except IOError:
         print("I/O error")
+
+def LoadCSV(csv_file):
+    dict_data = []
+    if path.exists(csv_file):
+        with open(csv_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            csv_columns = []
+            for row in csv_reader:
+                if line_count == 0:
+                    csv_columns = row
+                    line_count += 1
+                else:
+                    dict_data += [{k: int(v) if v.lstrip('-+').isdigit() else v for k, v in zip(csv_columns, row)}]
+                    line_count += 1
+    return dict_data
 
 def flag(code):
     code = code.upper()
@@ -82,11 +102,8 @@ def register(func):
         type_chat = update.effective_chat.type
         chat_id = update.effective_chat.id
         if type_chat == 'group':
-            for ch in self.channels:
-                if ch['id'] == chat_id:
-                    return func(self, update, context, *args, **kwargs)
-            if chat_id not in self.groups:
-                self.groups[chat_id] = {'title': update.effective_chat.title}
+            if chat_id not in self.groups and chat_id not in self.settings.get('channels', []):
+                self.groups += [chat_id]
         return func(self, update, context, *args, **kwargs)
     return wrapped
 
@@ -120,19 +137,18 @@ def rtype(rtype):
 
 class ORbot:
 
-    def __init__(self, settings):
-        # List of admins
-        self.LIST_OF_ADMINS = settings['admins']
+    def __init__(self, settings_file):
         # Load settings
-        self.channels = []
-        channels_file = settings.get('channels', 'config/channels.json')
-        if path.exists(channels_file):
-            with open(channels_file) as stream:
-                self.channels = json.load(stream)
+        self.settings_file = settings_file
+        with open(settings_file) as stream:
+            self.settings = json.load(stream)
+        telegram = self.settings['telegram']
+        # List of admins
+        self.LIST_OF_ADMINS = telegram['admins']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
-        self.updater = Updater(settings['token'], use_context=True)
+        self.updater = Updater(telegram['token'], use_context=True)
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Add commands
@@ -150,7 +166,7 @@ class ORbot:
         # log all errors
         dp.add_error_handler(self.error)
         # Allow chats
-        self.groups = {}
+        self.groups = []
 
     def runner(self):
         # Start the Bot
@@ -173,9 +189,9 @@ class ORbot:
         """ Bot manager """
         chat_id = update.effective_chat.id
         buttons = []
-        for name in self.groups:
-            title = self.groups[name]['title']
-            buttons += [InlineKeyboardButton(title, callback_data=f"GR DATA {name}")]
+        for group in self.groups:
+            title = context.bot.getChat(group).title
+            buttons += [InlineKeyboardButton(title, callback_data=f"GR DATA {group}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)
@@ -185,8 +201,9 @@ class ORbot:
         data = query.data.split()
         chat_id = int(data[2])
         if chat_id in self.groups:
-            name = self.groups[chat_id]['title']
+            name = context.bot.getChat(chat_id).title
             if data[1] == 'DATA':
+                # Check if the bot is admin or not
                 if isAdmin(context, chat_id):
                     buttons = [InlineKeyboardButton("Save", callback_data=f"GR SAVE {data[2]}"),
                             InlineKeyboardButton("Remove", callback_data=f"GR REMOVE {data[2]}")]
@@ -195,18 +212,21 @@ class ORbot:
                 else:
                     query.edit_message_text(text=f"{name} Require admin")
             elif data[1] == "SAVE":
-                group = self.groups[chat_id]
                 # Add in channels
-                self.channels += [{'title': group['title'],
-                                   'id': chat_id,
-                                   'link': context.bot.exportChatInviteLink(chat_id)}]
+                if 'channels' in self.settings:
+                    self.settings['channels'] += [chat_id]
+                else:
+                    self.settings['channels'] = [chat_id]
+                # Save to CSV file
+                with open(self.settings_file, 'w') as fp:
+                    json.dump(self.settings, fp)
                 # Remove from groups list
-                del self.groups[chat_id]
+                self.groups.remove(chat_id)
                 # edit message
                 query.edit_message_text(text=f"{name} Saved")
             else:
                 # Remove from groups list
-                del self.groups[chat_id]
+                self.groups.remove(chat_id)
                 # edit message
                 query.edit_message_text(text=f"{name} Removed")
         else:
@@ -225,12 +245,12 @@ class ORbot:
     def cmd_channels(self, update, context):
         """ List all channels availables """
         message = "All channels availables are:\n"
-        for channel in self.channels:
-            name = channel['title']
-            link = channel.get('link', '#')
+        for chat_id in self.settings.get('channels', []):
+            name = context.bot.getChat(chat_id).title
+            link = context.bot.exportChatInviteLink(chat_id)
             # Make flag lang
-            lang = flag(channel.get('lang', 'ita'))
-            message += f" - {lang} <a href='{link}'>{name}</a>\n"
+            # slang = flag(channel.get('lang', 'ita'))
+            message += f" - <a href='{link}'>{name}</a>\n"
         # Send message with reply in group
         # update.message.reply_text(message, parse_mode='HTML')
         # Send message without reply in group

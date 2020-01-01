@@ -56,18 +56,15 @@ def main():
         bot = telegram.Bot(token=telebot['token'])
         # Load information bot
         infobot = bot.get_me()
-        print(infobot)
         print("Bot info:")
         print(" - name:", infobot["first_name"])
         print(" - username:", infobot["username"])
         print(" - ID:", infobot["id"])
-        # Telegram ORbot
-        orbot = ORbot(settings['telegram'])
-        print("ORbot started")
-        # Run the bot
-        orbot.runner()
-    else:
-        print("No telegram config defined")
+    # Telegram ORbot
+    orbot = ORbot(args.settings)
+    print("ORbot started")
+    # Run the bot
+    orbot.runner()
 
 
 if __name__ == "__main__":
