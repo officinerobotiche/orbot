@@ -70,6 +70,12 @@ def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
     return menu
 
 
+def isAdmin(context, chat_id):
+    for member in context.bot.getChatAdministrators(chat_id):
+        if member.user.username == context.bot.username:
+            return True
+    return False
+
 def register(func):
     @wraps(func)
     def wrapped(self, update, context, *args, **kwargs):
@@ -80,7 +86,7 @@ def register(func):
                 if ch['id'] == chat_id:
                     return func(self, update, context, *args, **kwargs)
             if chat_id not in self.groups:
-                self.groups[chat_id] = update.effective_chat.title
+                self.groups[chat_id] = {'title': update.effective_chat.title}
         return func(self, update, context, *args, **kwargs)
     return wrapped
 
@@ -133,8 +139,8 @@ class ORbot:
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler("channels", self.cmd_channels))
-        dp.add_handler(CallbackQueryHandler(self.button, pattern='CH'))
-        dp.add_handler(CommandHandler("settings", self.cmd_settings))
+        dp.add_handler(CallbackQueryHandler(self.bb_groups, pattern='GR'))
+        dp.add_handler(CommandHandler("settings", self.cmd_groups))
         # Unknown handler
         unknown_handler = MessageHandler(Filters.command, self.unknown)
         dp.add_handler(unknown_handler)
@@ -144,7 +150,6 @@ class ORbot:
         # log all errors
         dp.add_error_handler(self.error)
         # Allow chats
-        # TODO: move to drive
         self.groups = {}
 
     def runner(self):
@@ -164,34 +169,44 @@ class ORbot:
 
     @restricted
     @rtype('private')
-    def cmd_settings(self, update, context):
+    def cmd_groups(self, update, context):
         """ Bot manager """
         chat_id = update.effective_chat.id
-        buttons = [InlineKeyboardButton("NEW " + self.groups[name], callback_data=f"CH DATA {name}") for name in self.groups]
+        buttons = []
+        for name in self.groups:
+            title = self.groups[name]['title']
+            buttons += [InlineKeyboardButton(title, callback_data=f"GR DATA {name}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=chat_id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
-    def button(self, update, context):
+    def bb_groups(self, update, context):
         query = update.callback_query
         data = query.data.split()
-        if int(data[2]) in self.groups:
-            name = self.groups[int(data[2])]
+        chat_id = int(data[2])
+        if chat_id in self.groups:
+            name = self.groups[chat_id]['title']
             if data[1] == 'DATA':
-                buttons = [InlineKeyboardButton("Save", callback_data=f"CH SAVE {data[2]}"),
-                        InlineKeyboardButton("Remove", callback_data=f"CH REMOVE {data[2]}")]
-                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
-                query.edit_message_text(text=f"{name} - Select option:", reply_markup=reply_markup)
+                if isAdmin(context, chat_id):
+                    buttons = [InlineKeyboardButton("Save", callback_data=f"GR SAVE {data[2]}"),
+                            InlineKeyboardButton("Remove", callback_data=f"GR REMOVE {data[2]}")]
+                    reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+                    query.edit_message_text(text=f"{name}", reply_markup=reply_markup)
+                else:
+                    query.edit_message_text(text=f"{name} Require admin")
             elif data[1] == "SAVE":
+                group = self.groups[chat_id]
                 # Add in channels
-                self.channels += [{'title': self.groups[int(data[2])], 'id': int(data[2])}]
+                self.channels += [{'title': group['title'],
+                                   'id': chat_id,
+                                   'link': context.bot.exportChatInviteLink(chat_id)}]
                 # Remove from groups list
-                del self.groups[int(data[2])]
+                del self.groups[chat_id]
                 # edit message
                 query.edit_message_text(text=f"{name} Saved")
             else:
                 # Remove from groups list
-                del self.groups[int(data[2])]
+                del self.groups[chat_id]
                 # edit message
                 query.edit_message_text(text=f"{name} Removed")
         else:
