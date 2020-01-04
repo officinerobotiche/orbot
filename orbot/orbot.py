@@ -182,8 +182,8 @@ class ORbot:
         dp.add_handler(CallbackQueryHandler(self.ch_type, pattern='CH_TYPE'))
         dp.add_handler(CallbackQueryHandler(self.ch_save, pattern='CH_SAVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_remove, pattern='CH_REMOVE'))
+        dp.add_handler(CallbackQueryHandler(self.ch_notify, pattern='CH_NOTIFY'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
-
         # Unknown handler
         unknown_handler = MessageHandler(Filters.command, self.unknown)
         dp.add_handler(unknown_handler)
@@ -241,6 +241,7 @@ class ORbot:
         buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
                 InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
                 InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}"),
+                InlineKeyboardButton("Notify", callback_data=f"CH_NOTIFY {keyID}"),
                 InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3))
         # Make message
@@ -280,6 +281,16 @@ class ORbot:
                     context.bot.send_message(chat_id=l_chat_id, text=f"New channel:", reply_markup=reply_markup)
 
     @check_key_id('Error message')
+    def ch_notify(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['id']
+        # Notify new chat in all chats
+        self.notifyNewChat(update, context, chat_id)
+
+    @check_key_id('Error message')
     def ch_save(self, update, context):
         query = update.callback_query
         data = query.data.split()
@@ -287,6 +298,10 @@ class ORbot:
         keyID = data[1]
         chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
+        if isAdmin(context, chat_id):
+            # If None generate a link
+            if chat.invite_link is None:
+                context.bot.exportChatInviteLink(chat_id)
         # Update channel setting
         if str(chat_id) not in self.settings['channels']:
             self.settings['channels'][str(chat_id)] = {}
@@ -303,10 +318,6 @@ class ORbot:
         if int(chat_id) in self.groups:
             # Remove from groups list
             self.groups.remove(int(chat_id))
-        if isAdmin(context, chat_id):
-            # If None generate a link
-            if chat.invite_link is None:
-                context.bot.exportChatInviteLink(chat_id)
         # remove key from user_data list
         del context.user_data[keyID]
         # Save to CSV file
