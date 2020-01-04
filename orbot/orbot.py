@@ -29,12 +29,10 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from os import path
 import json
 import logging
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot
-import csv
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import re
 import os
 from functools import wraps
@@ -44,8 +42,6 @@ from threading import Thread
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-# Offset flags
-OFFSET = 127462 - ord('A')
 # Version match
 VERSION_RE = re.compile(r""".*__version__ = ["'](.*?)['"]""", re.S)
 
@@ -56,45 +52,6 @@ def get_version():
     with open(os.path.join(here, "__init__.py")) as fp:
         VERSION = VERSION_RE.match(fp.read()).group(1)
     return VERSION
-
-
-def hasNumbers(inputString):
-    return any(char.isdigit() for char in inputString)
-
-def saveFile(csv_file, dict_data):
-    csv_columns = []
-    if dict_data:
-        csv_columns = list(dict_data[0].keys())
-    else:
-        return
-    try:
-        with open(csv_file, 'w') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
-            writer.writeheader()
-            for data in dict_data:
-                writer.writerow(data)
-    except IOError:
-        print("I/O error")
-
-def LoadCSV(csv_file):
-    dict_data = []
-    if path.exists(csv_file):
-        with open(csv_file) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=',')
-            line_count = 0
-            csv_columns = []
-            for row in csv_reader:
-                if line_count == 0:
-                    csv_columns = row
-                    line_count += 1
-                else:
-                    dict_data += [{k: int(v) if v.lstrip('-+').isdigit() else v for k, v in zip(csv_columns, row)}]
-                    line_count += 1
-    return dict_data
-
-def flag(code):
-    code = code.upper()
-    return chr(ord(code[0]) + OFFSET) + chr(ord(code[1]) + OFFSET)
 
 
 def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
@@ -141,7 +98,7 @@ def rtype(rtype):
         @wraps(func)
         def wrapped(self, update, context, *args, **kwargs):
             type_chat = update.effective_chat.type
-            if rtype in type_chat:
+            if update.effective_chat.id in self.settings['channels'] or self.isMember(context, update.effective_user.id):
                 return func(self, update, context, *args, **kwargs)
             else:
                 logger.info(f"Unauthorized access denied for {type_chat}.")
@@ -230,6 +187,27 @@ class ORbot:
         for user_chat_id in self.LIST_OF_ADMINS:
             bot.send_message(chat_id=user_chat_id, text=f"🤖 Bot started! v{version}")
 
+    def isMember(self, context, user_id):
+        for chat_id in self.settings['channels']:
+            try:
+                member = context.bot.get_chat_member(chat_id, user_id)
+                print(member)
+                return True
+            except TelegramError:
+                pass
+        return False
+
+    def getLevel(self, context, user_id):
+        level = 0
+        for chat_id in self.settings['channels']:
+            try:
+                _ = context.bot.get_chat_member(chat_id, int(user_id))
+                level_ch = int(self.settings['channels'][chat_id].get('type', 0))
+                level = level_ch if level_ch <= level else level
+            except TelegramError:
+                pass
+        return level
+
     def runner(self):
         # Start the Bot
         self.updater.start_polling()
@@ -244,13 +222,11 @@ class ORbot:
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     @restricted
-    @rtype('private')
     def restart(self, update, context):
         update.message.reply_text('Bot is restarting...')
         Thread(target=self.stop_and_restart).start()
 
     @restricted
-    @rtype('private')
     def ch_list(self, update, context):
         """ Bot manager """
         # Generate ID and seperate value from command
@@ -417,21 +393,24 @@ class ORbot:
             local_chat = context.bot.getChat(local_chat_id)
             local_level = int(self.settings['channels'][local_chat_id].get('type', 0))
             logger.debug(f"{local_chat.title} = {local_level}")
-            for chat_id in self.settings['channels']:
-                chat = context.bot.getChat(chat_id)
-                name = chat.title
-                link = chat.invite_link
-                level = int(self.settings['channels'][chat_id].get('type', 0))
-                if isAdmin(context, chat_id):
-                    # If None generate a link
-                    if link is None:
-                        link = context.bot.exportChatInviteLink(chat_id)
-                # Make flag lang
-                # slang = flag(channel.get('lang', 'ita'))
-                is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
-                # Check if this group can see other group with same level
-                if local_level <= level and link is not None:
-                    buttons += [InlineKeyboardButton(name + is_admin, url=link)]
+        else:
+            local_level = self.getLevel(context, local_chat_id)
+            print(local_level)
+        for chat_id in self.settings['channels']:
+            chat = context.bot.getChat(chat_id)
+            name = chat.title
+            link = chat.invite_link
+            level = int(self.settings['channels'][chat_id].get('type', 0))
+            if isAdmin(context, chat_id):
+                # If None generate a link
+                if link is None:
+                    link = context.bot.exportChatInviteLink(chat_id)
+            # Make flag lang
+            # slang = flag(channel.get('lang', 'ita'))
+            is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
+            # Check if this group can see other group with same level
+            if local_level <= level and link is not None:
+                buttons += [InlineKeyboardButton(name + is_admin, url=link)]
         return InlineKeyboardMarkup(build_menu(buttons, 1))
 
     def unknown(self, update, context):
@@ -445,7 +424,9 @@ class ORbot:
                 if member.user.username != context.bot.username:
                     # Build list channels buttons
                     reply_markup = self.getChannels(update, context)
-                    context.bot.send_message(chat_id=update.effective_chat.id, text=f"{member.username} Welcome! All channels avalable are:", reply_markup=reply_markup)
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"{member.username} Welcome! All channels avalable are:",
+                                             reply_markup=reply_markup)
 
     @register
     def start(self, update, context):
@@ -459,14 +440,10 @@ class ORbot:
     @rtype('group')
     def cmd_channels(self, update, context):
         """ List all channels availables """
-        chat_id = str(update.effective_chat.id)
-        if chat_id in self.settings['channels']:
-            reply_markup = self.getChannels(update, context)
-            message = "All channels available are:" if reply_markup else 'No channels available'
-            # Send message without reply in group
-            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
-        else:
-            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Hi, I'm not activate!", parse_mode='HTML')
+        reply_markup = self.getChannels(update, context)
+        message = "All channels available are:" if reply_markup else 'No channels available'
+        # Send message without reply in group
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
     def help(self, update, context):
         """ Help list of all commands """
