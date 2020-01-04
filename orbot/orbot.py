@@ -237,11 +237,6 @@ class ORbot:
         # Read chat_id
         chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
-        # Update channel setting
-        if str(chat_id) in self.settings['channels']:
-            for k, v in context.user_data[keyID].items():
-                if k != 'chat_id':
-                    self.settings['channels'][str(chat_id)][k] = v
         # Make buttons
         buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
                 InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
@@ -268,6 +263,22 @@ class ORbot:
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
         query.edit_message_text(text=f"{title}", reply_markup=reply_markup)
 
+    def notifyNewChat(self, update, context, chat_id):
+        chat = context.bot.getChat(chat_id)
+        name = chat.title
+        link = chat.invite_link
+        level = int(self.settings['channels'][chat_id].get('type', 0)) if chat_id in self.settings['channels'] else 0
+
+        for l_chat_id in self.settings['channels']:
+            l_level = int(self.settings['channels'][chat_id].get('type', 0))
+            # Check if this group can see other group with same level
+            if l_chat_id == str(chat_id):
+                context.bot.send_message(chat_id=l_chat_id, text=f"Hi! I'm activate")
+            else:
+                if l_level <= level and link is not None:
+                    reply_markup = InlineKeyboardMarkup(build_menu([InlineKeyboardButton(name, url=link)], 1))
+                    context.bot.send_message(chat_id=l_chat_id, text=f"New channel:", reply_markup=reply_markup)
+
     @check_key_id('Error message')
     def ch_save(self, update, context):
         query = update.callback_query
@@ -279,10 +290,19 @@ class ORbot:
         # Update channel setting
         if str(chat_id) not in self.settings['channels']:
             self.settings['channels'][str(chat_id)] = {}
+            for k, v in context.user_data[keyID].items():
+                if k != 'id':
+                    self.settings['channels'][str(chat_id)][k] = v
+            # Notify new chat in all chats
+            self.notifyNewChat(update, context, chat_id)
+        else:
+            for k, v in context.user_data[keyID].items():
+                if k != 'id':
+                    self.settings['channels'][str(chat_id)][k] = v
         # Remove chat_id if in groups list
-        if chat_id in self.groups:
+        if int(chat_id) in self.groups:
             # Remove from groups list
-            self.groups.remove(chat_id)
+            self.groups.remove(int(chat_id))
         if isAdmin(context, chat_id):
             # If None generate a link
             if chat.invite_link is None:
@@ -356,10 +376,12 @@ class ORbot:
     @register
     def add_group(self, update, context):
         for member in update.message.new_chat_members:
-            if member.user.username != context.bot.username:
-                # Build list channels buttons
-                reply_markup = self.getChannels(update, context)
-                context.bot.send_message(chat_id=update.effective_chat.id, text=f"{member.username} Welcome! All channels avalable are:", reply_markup=reply_markup)
+            print(member)
+            if not member.is_bot:
+                if member.user.username != context.bot.username:
+                    # Build list channels buttons
+                    reply_markup = self.getChannels(update, context)
+                    context.bot.send_message(chat_id=update.effective_chat.id, text=f"{member.username} Welcome! All channels avalable are:", reply_markup=reply_markup)
 
     @register
     def start(self, update, context):
@@ -373,12 +395,14 @@ class ORbot:
     @rtype('group')
     def cmd_channels(self, update, context):
         """ List all channels availables """
-        reply_markup = self.getChannels(update, context)
-        message = "All channels available are:" if reply_markup else 'No channels available'
-        # Send message with reply in group
-        # update.message.reply_text(message, parse_mode='HTML')
-        # Send message without reply in group
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+        chat_id = str(update.effective_chat.id)
+        if chat_id in self.settings['channels']:
+            reply_markup = self.getChannels(update, context)
+            message = "All channels available are:" if reply_markup else 'No channels available'
+            # Send message without reply in group
+            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+        else:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Hi, I'm not activate!", parse_mode='HTML')
 
     def help(self, update, context):
         """ Help list of all commands """
