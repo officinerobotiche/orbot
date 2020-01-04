@@ -470,10 +470,18 @@ class ORbot:
 
     def help(self, update, context):
         """ Help list of all commands """
-        message = "All commands available in this bot are show below \n"
-        message += " - /start Start your bot \n"
-        message += " - /channels All channels \n"
-        message += " - /help This help \n"
+        chat_id = update.effective_chat.id
+        message = ""
+        if chat_id in self.LIST_OF_ADMINS:
+            message += "<b>Admin commands:</b>\n"
+            message += " - /start your bot \n"
+            message += " - /settings channels \n"
+            message += " - /restart this bot \n"
+            message += "\n"
+        message += "All commands available in this bot are show below \n"
+        # Print all commands availables
+        message += " - All /channels available \n"
+        message += " - This /help \n"
         # update.message.reply_text(message, parse_mode='HTML')
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
 
