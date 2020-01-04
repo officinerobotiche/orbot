@@ -287,8 +287,13 @@ class ORbot:
         # Extract keyID, chat_id
         keyID = data[1]
         chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
         # Notify new chat in all chats
         self.notifyNewChat(update, context, chat_id)
+        # remove key from user_data list
+        del context.user_data[keyID]
+        # edit message
+        query.edit_message_text(text=f"{chat.title} Notification sent!")
 
     @check_key_id('Error message')
     def ch_save(self, update, context):
