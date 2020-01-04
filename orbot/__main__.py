@@ -48,11 +48,13 @@ def main():
     # Parse arguments
     args = parser.parse_args()
     # Telegram ORbot
-    orbot = ORbot(args.settings)
-    print("ORbot started")
-    # Run the bot
-    orbot.runner()
-
+    try:
+        orbot = ORbot(args.settings)
+        print("ORbot started")
+        # Run the bot
+        orbot.runner()
+    except ORbot.BotException as e:
+        print(e)
 
 if __name__ == "__main__":
     main()

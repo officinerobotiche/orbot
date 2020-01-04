@@ -168,16 +168,28 @@ def check_key_id(message):
 
 class ORbot:
 
+    class BotException(Exception):
+        pass
+
     def __init__(self, settings_file):
         # Load settings
         self.settings_file = settings_file
-        with open(settings_file) as stream:
-            self.settings = json.load(stream)
+        try:
+            with open(settings_file) as stream:
+                self.settings = json.load(stream)
+        except FileNotFoundError:
+            raise ORbot.BotException(f"Setting file in {self.settings_file} not found")
         # Initialize channels if empty
         if 'channels' not in self.settings:
             self.settings['channels'] = {}
+        if 'telegram' not in self.settings:
+            raise ORbot.BotException(f"telegram config is not defined on {self.settings_file}")
         telegram = self.settings['telegram']
         # List of admins
+        if 'token' not in telegram:
+            raise ORbot.BotException(f"token is not defined in telegram config")
+        if 'admins' not in telegram:
+            raise ORbot.BotException(f"admins are not defined in telegram config")
         self.LIST_OF_ADMINS = telegram['admins']
         # Create the Updater and pass it your bot's token.
         # Make sure to set use_context=True to use the new context based callbacks

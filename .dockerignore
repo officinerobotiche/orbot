@@ -1,0 +1,16 @@
+# Test virtual environment
+venv/
+.venv/
+# Setuptools distribution folder.
+dist/
+build/
+# Unit test / coverage reports
+.tox/
+.cache/
+.git/
+# IDE
+.vscode/
+# Test config
+config/
+token.pickle
+credentials.json
