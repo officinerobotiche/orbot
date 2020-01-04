@@ -102,7 +102,7 @@ def register(func):
     def wrapped(self, update, context, *args, **kwargs):
         type_chat = update.effective_chat.type
         chat_id = update.effective_chat.id
-        if type_chat == 'group':
+        if 'group' in type_chat:
             if chat_id not in self.groups and str(chat_id) not in self.settings['channels']:
                 self.groups += [chat_id]
         return func(self, update, context, *args, **kwargs)
@@ -126,7 +126,7 @@ def rtype(rtype):
         @wraps(func)
         def wrapped(self, update, context, *args, **kwargs):
             type_chat = update.effective_chat.type
-            if type_chat == rtype:
+            if rtype in type_chat:
                 return func(self, update, context, *args, **kwargs)
             else:
                 logger.info(f"Unauthorized access denied for {type_chat}.")
@@ -213,10 +213,10 @@ class ORbot:
         buttons = []
         for chat_id in self.settings['channels']:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton(title, callback_data=f"CH_EDIT {keyID} chat_id={chat_id}")]
+            buttons += [InlineKeyboardButton(title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         for chat_id in self.groups:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton("NEW " + title, callback_data=f"CH_EDIT {keyID} chat_id={chat_id}")]
+            buttons += [InlineKeyboardButton(title + " [NEW!]", callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
@@ -235,7 +235,7 @@ class ORbot:
             name, value = var.split('=')
             context.user_data[keyID][name] = value
         # Read chat_id
-        chat_id = context.user_data[keyID]['chat_id']
+        chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
         # Update channel setting
         if str(chat_id) in self.settings['channels']:
@@ -260,7 +260,7 @@ class ORbot:
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
-        chat_id = context.user_data[keyID]['chat_id']
+        chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
         # Make buttons
         buttons = [InlineKeyboardButton("Private", callback_data=f"CH_EDIT {keyID} type=0"),
@@ -274,7 +274,7 @@ class ORbot:
         data = query.data.split()
         # Extract keyID, chat_id
         keyID = data[1]
-        chat_id = context.user_data[keyID]['chat_id']
+        chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
         # Update channel setting
         if str(chat_id) not in self.settings['channels']:
@@ -301,7 +301,7 @@ class ORbot:
         data = query.data.split()
         # Extract keyID, chat_id
         keyID = data[1]
-        chat_id = context.user_data[keyID]['chat_id']
+        chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
         # Update channel setting
         if str(chat_id) in self.settings['channels']:
@@ -346,7 +346,7 @@ class ORbot:
                 # slang = flag(channel.get('lang', 'ita'))
                 is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
                 # Check if this group can see other group with same level
-                if local_level <= level:
+                if local_level <= level and link is not None:
                     buttons += [InlineKeyboardButton(name + is_admin, url=link)]
         return InlineKeyboardMarkup(build_menu(buttons, 1))
 
