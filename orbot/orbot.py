@@ -102,7 +102,7 @@ def register(func):
         type_chat = update.effective_chat.type
         chat_id = update.effective_chat.id
         if type_chat == 'group':
-            if chat_id not in self.groups and chat_id not in self.settings.get('channels', []):
+            if chat_id not in self.groups and chat_id not in self.settings['channels']:
                 self.groups += [chat_id]
         return func(self, update, context, *args, **kwargs)
     return wrapped
@@ -142,6 +142,9 @@ class ORbot:
         self.settings_file = settings_file
         with open(settings_file) as stream:
             self.settings = json.load(stream)
+        # Initialize channels if empty
+        if 'channels' not in self.settings:
+            self.settings['channels'] = {}
         telegram = self.settings['telegram']
         # List of admins
         self.LIST_OF_ADMINS = telegram['admins']
@@ -214,14 +217,16 @@ class ORbot:
             elif data[1] == "SAVE":
                 # Add in channels
                 if 'channels' in self.settings:
-                    self.settings['channels'] += [chat_id]
+                    self.settings['channels'][chat_id] = {}
                 else:
-                    self.settings['channels'] = [chat_id]
+                    self.settings['channels'] = chat_id
                 # Save to CSV file
                 with open(self.settings_file, 'w') as fp:
                     json.dump(self.settings, fp)
                 # Remove from groups list
                 self.groups.remove(chat_id)
+                # Generate link
+                context.bot.exportChatInviteLink(chat_id)
                 # edit message
                 query.edit_message_text(text=f"{name} Saved")
             else:
@@ -244,17 +249,25 @@ class ORbot:
     @rtype('group')
     def cmd_channels(self, update, context):
         """ List all channels availables """
-        message = "All channels availables are:\n"
-        for chat_id in self.settings.get('channels', []):
-            name = context.bot.getChat(chat_id).title
-            link = context.bot.exportChatInviteLink(chat_id)
+        buttons = []
+        for chat_id in self.settings['channels']:
+            chat = context.bot.getChat(chat_id)
+            name = chat.title
+            link = chat.invite_link
+            if isAdmin(context, chat_id):
+                # If None generate a link
+                if link is None:
+                    link = context.bot.exportChatInviteLink(chat_id)
             # Make flag lang
             # slang = flag(channel.get('lang', 'ita'))
-            message += f" - <a href='{link}'>{name}</a>\n"
+            is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
+            buttons += [InlineKeyboardButton(name + is_admin, url=link)]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
+        message = "All channels availables are:" if buttons else 'No channels availables'
         # Send message with reply in group
         # update.message.reply_text(message, parse_mode='HTML')
         # Send message without reply in group
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
     def help(self, update, context):
         """ Help list of all commands """
