@@ -176,9 +176,10 @@ class ORbot:
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler("channels", self.cmd_channels))
-        #dp.add_handler(CallbackQueryHandler(self.bb_groups, pattern='GR'))
+        # Settings manager
         dp.add_handler(CommandHandler("settings", self.ch_list))
         dp.add_handler(CallbackQueryHandler(self.ch_edit, pattern='CH_EDIT'))
+        dp.add_handler(CallbackQueryHandler(self.ch_type, pattern='CH_TYPE'))
         dp.add_handler(CallbackQueryHandler(self.ch_save, pattern='CH_SAVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_remove, pattern='CH_REMOVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
@@ -212,10 +213,10 @@ class ORbot:
         buttons = []
         for chat_id in self.settings['channels']:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton(title, callback_data=f"CH_EDIT {keyID} {chat_id}")]
+            buttons += [InlineKeyboardButton(title, callback_data=f"CH_EDIT {keyID} chat_id={chat_id}")]
         for chat_id in self.groups:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton("NEW " + title, callback_data=f"CH_EDIT {keyID} {chat_id}")]
+            buttons += [InlineKeyboardButton("NEW " + title, callback_data=f"CH_EDIT {keyID} chat_id={chat_id}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
@@ -228,14 +229,42 @@ class ORbot:
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
-        chat_id = int(data[2])
-        title = context.bot.getChat(chat_id).title
         # Add chat id in user data
-        context.user_data[keyID] = {'chat_id': chat_id}
+        for n in range(2, len(data)):
+            var = data[n]
+            name, value = var.split('=')
+            context.user_data[keyID][name] = value
+        # Read chat_id
+        chat_id = context.user_data[keyID]['chat_id']
+        title = context.bot.getChat(chat_id).title
+        # Update channel setting
+        if str(chat_id) in self.settings['channels']:
+            for k, v in context.user_data[keyID].items():
+                if k != 'chat_id':
+                    self.settings['channels'][str(chat_id)][k] = v
         # Make buttons
-        buttons = [InlineKeyboardButton("Save", callback_data=f"CH_SAVE {keyID}"),
+        buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
+                InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
                 InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}"),
                 InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3))
+        # Make message
+        level = int(self.settings['channels'][str(chat_id)].get('type', 0)) if str(chat_id) in self.settings['channels'] else 0
+        level_msg = 'restricted' if level == -1 else 'private'
+        message = f"{title}\n - type={level_msg}"
+        query.edit_message_text(text=message, reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def ch_type(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['chat_id']
+        title = context.bot.getChat(chat_id).title
+        # Make buttons
+        buttons = [InlineKeyboardButton("Private", callback_data=f"CH_EDIT {keyID} type=0"),
+                InlineKeyboardButton("Restricted", callback_data=f"CH_EDIT {keyID} type=-1")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
         query.edit_message_text(text=f"{title}", reply_markup=reply_markup)
 
@@ -250,8 +279,6 @@ class ORbot:
         # Update channel setting
         if str(chat_id) not in self.settings['channels']:
             self.settings['channels'][str(chat_id)] = {}
-        else:
-            pass
         # Remove chat_id if in groups list
         if chat_id in self.groups:
             # Remove from groups list
@@ -301,23 +328,32 @@ class ORbot:
 
     def getChannels(self, update, context):
         buttons = []
-        for chat_id in self.settings['channels']:
-            chat = context.bot.getChat(chat_id)
-            name = chat.title
-            link = chat.invite_link
-            if isAdmin(context, chat_id):
-                # If None generate a link
-                if link is None:
-                    link = context.bot.exportChatInviteLink(chat_id)
-            # Make flag lang
-            # slang = flag(channel.get('lang', 'ita'))
-            is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
-            buttons += [InlineKeyboardButton(name + is_admin, url=link)]
+        local_chat_id = str(update.effective_chat.id)
+        if local_chat_id in self.settings['channels']:
+            local_chat = context.bot.getChat(local_chat_id)
+            local_level = int(self.settings['channels'][local_chat_id].get('type', 0))
+            logger.debug(f"{local_chat.title} = {local_level}")
+            for chat_id in self.settings['channels']:
+                chat = context.bot.getChat(chat_id)
+                name = chat.title
+                link = chat.invite_link
+                level = int(self.settings['channels'][chat_id].get('type', 0))
+                if isAdmin(context, chat_id):
+                    # If None generate a link
+                    if link is None:
+                        link = context.bot.exportChatInviteLink(chat_id)
+                # Make flag lang
+                # slang = flag(channel.get('lang', 'ita'))
+                is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
+                # Check if this group can see other group with same level
+                if local_level <= level:
+                    buttons += [InlineKeyboardButton(name + is_admin, url=link)]
         return InlineKeyboardMarkup(build_menu(buttons, 1))
 
     def unknown(self, update, context):
         context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
+    @register
     def add_group(self, update, context):
         for member in update.message.new_chat_members:
             if member.user.username != context.bot.username:
