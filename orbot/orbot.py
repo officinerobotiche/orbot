@@ -39,6 +39,8 @@ import re
 import os
 from functools import wraps
 from uuid import uuid4
+import sys
+from threading import Thread
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -200,6 +202,7 @@ class ORbot:
         # Add commands
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
+        dp.add_handler(CommandHandler('restart', self.restart))
         dp.add_handler(CommandHandler("channels", self.cmd_channels))
         # Settings manager
         dp.add_handler(CommandHandler("settings", self.ch_list))
@@ -234,6 +237,17 @@ class ORbot:
         # SIGTERM or SIGABRT. This should be used most of the time, since
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
+
+    def stop_and_restart(self):
+        """Gracefully stop the Updater and replace the current process with a new one"""
+        self.updater.stop()
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
+    @restricted
+    @rtype('private')
+    def restart(self, update, context):
+        update.message.reply_text('Bot is restarting...')
+        Thread(target=self.stop_and_restart).start()
 
     @restricted
     @rtype('private')
