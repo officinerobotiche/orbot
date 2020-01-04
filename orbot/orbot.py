@@ -33,8 +33,10 @@ from os import path
 import json
 import logging
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot
 import csv
+import re
+import os
 from functools import wraps
 from uuid import uuid4
 
@@ -42,6 +44,17 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 # Offset flags
 OFFSET = 127462 - ord('A')
+# Version match
+VERSION_RE = re.compile(r""".*__version__ = ["'](.*?)['"]""", re.S)
+
+
+def get_version():
+    # Load version package
+    here = os.path.abspath(os.path.dirname(__file__))
+    with open(os.path.join(here, "__init__.py")) as fp:
+        VERSION = VERSION_RE.match(fp.read()).group(1)
+    return VERSION
+
 
 def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
@@ -194,6 +207,13 @@ class ORbot:
         dp.add_error_handler(self.error)
         # Allow chats
         self.groups = []
+        # Send a message to all admins when the system is started
+        version = get_version()
+        bot = Bot(token=telegram['token'])
+        infobot = bot.get_me()
+        logger.info(f"Bot: {infobot}")
+        for user_chat_id in self.LIST_OF_ADMINS:
+            bot.send_message(chat_id=user_chat_id, text=f"🤖 Bot started! v{version}")
 
     def runner(self):
         # Start the Bot
@@ -299,26 +319,28 @@ class ORbot:
     def ch_save(self, update, context):
         query = update.callback_query
         data = query.data.split()
+        new_channel = False
         # Extract keyID, chat_id
         keyID = data[1]
         chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
+        # generate chat link
         if isAdmin(context, chat_id):
             # If None generate a link
             if chat.invite_link is None:
                 context.bot.exportChatInviteLink(chat_id)
-        # Update channel setting
+        # Add channel in list
         if str(chat_id) not in self.settings['channels']:
             self.settings['channels'][str(chat_id)] = {}
-            for k, v in context.user_data[keyID].items():
-                if k != 'id':
-                    self.settings['channels'][str(chat_id)][k] = v
+            new_channel = True
+        # Update all variables
+        for k, v in context.user_data[keyID].items():
+            if k != 'id':
+                self.settings['channels'][str(chat_id)][k] = v
+        # Update channel setting
+        if new_channel:
             # Notify new chat in all chats
             self.notifyNewChat(update, context, chat_id)
-        else:
-            for k, v in context.user_data[keyID].items():
-                if k != 'id':
-                    self.settings['channels'][str(chat_id)][k] = v
         # Remove chat_id if in groups list
         if int(chat_id) in self.groups:
             # Remove from groups list

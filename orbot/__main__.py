@@ -34,32 +34,19 @@ import argparse
 # Drive manager
 from .drive import Drive
 # Load ORbot
-from .orbot import ORbot
+from .orbot import ORbot, get_version
 
 
 def main():
     parser = argparse.ArgumentParser(description='Officine Robotiche bot manager')
     parser.add_argument('-s', dest="settings", help='path of setting file', default='config/settings.json')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s {version}'.format(version=get_version()))
     # Google Drive
     #drive = Drive(settings['drive'])
     #drive.testDrive()
     #drive.upload()
     # Parse arguments
     args = parser.parse_args()
-    # Load settings
-    with open(args.settings) as stream:
-        settings = json.load(stream)
-    # Run telegram bot
-    if 'telegram' in settings:
-        # load bot
-        telebot = settings['telegram']
-        bot = telegram.Bot(token=telebot['token'])
-        # Load information bot
-        infobot = bot.get_me()
-        print("Bot info:")
-        print(" - name:", infobot["first_name"])
-        print(" - username:", infobot["username"])
-        print(" - ID:", infobot["id"])
     # Telegram ORbot
     orbot = ORbot(args.settings)
     print("ORbot started")
