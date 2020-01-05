@@ -545,6 +545,7 @@ class ORbot:
             message += "<b>Admin commands:</b>\n"
             message += " - /start your bot \n"
             message += " - /settings channels \n"
+            message += " - /config bot \n"
             message += " - /restart this bot \n"
             message += "\n"
         message += "All commands available in this bot are show below \n"
