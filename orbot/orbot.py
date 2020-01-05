@@ -318,7 +318,7 @@ class ORbot:
         buttons = []
         for chat_id in self.settings['channels']:
             title = context.bot.getChat(chat_id).title
-            level = self.settings['channels'][chat_id].get('type', 0)
+            level = self.settings['channels'][chat_id].get('type', "0")
             # Load icon type channel
             icon = ORbot.TYPE[level].get('icon', '')
             if icon:
