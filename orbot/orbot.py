@@ -177,6 +177,7 @@ class ORbot:
         dp.add_handler(CallbackQueryHandler(self.ch_save, pattern='CH_SAVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_remove, pattern='CH_REMOVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_notify, pattern='CH_NOTIFY'))
+        dp.add_handler(CallbackQueryHandler(self.ch_link, pattern='CH_LINK'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
         # Configuration
         dp.add_handler(CommandHandler("config", self.config))
@@ -339,26 +340,46 @@ class ORbot:
             context.user_data[keyID][name] = value
         # Read chat_id
         chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
         # Populate configuration
         if chat_id in self.settings['channels']:
             for k, v in self.settings['channels'][chat_id].items():
                 if k not in context.user_data[keyID]:
                     context.user_data[keyID][k] = v
-        # Read title
-        title = context.bot.getChat(chat_id).title
         # Make buttons
         buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
                    InlineKeyboardButton("Notify", callback_data=f"CH_NOTIFY {keyID}"),
+                   InlineKeyboardButton("Gen link", callback_data=f"CH_LINK {keyID}"),
                    InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
                    InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         # Make message
-        message = f"{title}\n"
+        message = f"{chat.title}\n"
+        message += f"{chat.invite_link}\n" if chat.invite_link is not None else "Link not available!\n"
         for k, v in context.user_data[keyID].items():
             if k == 'type':
                 v = ORbot.TYPE[v]
             message += f" - {k}={v}\n"
         query.edit_message_text(text=message, reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def ch_link(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
+        # remove key from user_data list
+        del context.user_data[keyID]
+        # generate chat link
+        if isAdmin(context, chat_id):
+            link = context.bot.exportChatInviteLink(chat_id)
+            # edit message
+            query.edit_message_text(text=f"{chat.title} Link generated:\n{link}")
+        else:
+            # edit message
+            query.edit_message_text(text=f"{chat.title} Require bot Admin!")
 
     @check_key_id('Error message')
     def ch_type(self, update, context):
