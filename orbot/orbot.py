@@ -98,7 +98,7 @@ def rtype(rtype):
         @wraps(func)
         def wrapped(self, update, context, *args, **kwargs):
             type_chat = update.effective_chat.type
-            if update.effective_chat.id in self.settings['channels'] or self.isMember(context, update.effective_user.id):
+            if update.effective_chat.id in self.settings['channels'] or len(self.isMember(context, update.effective_user.id)) > 0:
                 return func(self, update, context, *args, **kwargs)
             else:
                 logger.info(f"Unauthorized access denied for {type_chat}.")
@@ -203,13 +203,15 @@ class ORbot:
             bot.send_message(chat_id=user_chat_id, text=f"🤖 Bot started! v{version}")
 
     def isMember(self, context, user_id):
+        chat_member = []
         for chat_id in self.settings['channels']:
             try:
-                _ = context.bot.get_chat_member(chat_id, user_id)
-                return True
+                chat = context.bot.get_chat_member(chat_id, user_id)
+                if chat.status != 'left':
+                    chat_member +=[int(chat_id)]
             except TelegramError:
                 pass
-        return False
+        return chat_member
 
     def getLevel(self, context, user_id):
         level = 0
@@ -396,7 +398,19 @@ class ORbot:
         chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
         # Make buttons
-        buttons = [InlineKeyboardButton(ORbot.TYPE[typech]['name'], callback_data=f"CH_EDIT {keyID} type={typech}") for typech in ORbot.TYPE]
+        buttons = []
+        if 'type' in context.user_data[keyID]:
+            level = int(context.user_data[keyID]['type'])
+        elif chat_id in self.settings['channels']:
+            level = int(self.settings['channels'][chat_id].get('type', 0))
+        else:
+            level = 0
+        for typech in ORbot.TYPE:
+            icon = ORbot.TYPE[typech].get('icon', '')
+            if icon:
+                icon = f"[{icon}] - "
+            check = " [X]" if level == int(typech) else ""
+            buttons += [InlineKeyboardButton(icon + ORbot.TYPE[typech]['name'] + check, callback_data=f"CH_EDIT {keyID} type={typech}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         query.edit_message_text(text=f"{title}", reply_markup=reply_markup)
 
@@ -542,8 +556,8 @@ class ORbot:
     @register
     def add_group(self, update, context):
         for member in update.message.new_chat_members:
-            print(member)
-            if not member.is_bot and not self.isMember(context, member.id):
+            isMember = self.isMember(context, member.id)
+            if not member.is_bot and update.effective_chat.id in isMember and len(isMember) == 1:
                 # Build list channels buttons
                 reply_markup = self.getChannels(update, context)
                 context.bot.send_message(chat_id=update.effective_chat.id,
