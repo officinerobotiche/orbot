@@ -130,10 +130,10 @@ class ORbot:
     class BotException(Exception):
         pass
 
-    TYPE = {"-10": "Administration",
-            "-1": "Hidden",
-            "0": "Private",
-            "10": "Public"
+    TYPE = {"-10": {'name': "Administration", 'icon': '🔐'},
+            "-1": {'name': "Hidden", 'icon': '🕶'},
+            "0": {'name': "Private"},
+            "10": {'name': "Public", 'icon': '📢'}
             }
 
     def __init__(self, settings_file):
@@ -246,7 +246,8 @@ class ORbot:
         # Generate ID and seperate value from command
         keyID = str(uuid4())
         # Make buttons
-        buttons = [InlineKeyboardButton("Notifications", callback_data=f"CONF_NOTIFY {keyID}")]
+        buttons = [InlineKeyboardButton("Notifications " + ("🔊" if self.settings['config'].get('notify', True) else "🔇"),
+                                        callback_data=f"CONF_NOTIFY {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CONF_CANCEL {keyID}")))
         message = f"Configuration\n"
         for k, v in self.settings['config'].items():
@@ -299,12 +300,12 @@ class ORbot:
         # Extract keyID, chat_id and title
         keyID = data[1]
         # Make buttons
-        buttons = [InlineKeyboardButton("Enable" + (" [X]" if self.settings['config'].get('notify', True) else ""),
+        buttons = [InlineKeyboardButton("🔊 Enable" + (" [X]" if self.settings['config'].get('notify', True) else ""),
                                         callback_data=f"CONF_SAVE {keyID} notify=True"),
-                   InlineKeyboardButton("Disable" + ("" if self.settings['config'].get('notify', True) else " [X]"),
+                   InlineKeyboardButton("🔇 Disable" + ("" if self.settings['config'].get('notify', True) else " [X]"),
                                         callback_data=f"CONF_SAVE {keyID} notify=False")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
-        message = f"Notifications"
+        message = f"🔈 Notifications"
         # edit message
         query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
 
@@ -317,10 +318,15 @@ class ORbot:
         buttons = []
         for chat_id in self.settings['channels']:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton(title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
+            level = self.settings['channels'][chat_id].get('type', 0)
+            # Load icon type channel
+            icon = ORbot.TYPE[level].get('icon', '')
+            if icon:
+                icon = f"[{icon}] "
+            buttons += [InlineKeyboardButton(icon + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         for chat_id in self.groups:
             title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton(title + " [NEW!]", callback_data=f"CH_EDIT {keyID} id={chat_id}")]
+            buttons += [InlineKeyboardButton("[NEW!] " + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
@@ -358,7 +364,7 @@ class ORbot:
         message += f"{chat.invite_link}\n" if chat.invite_link is not None else "Link not available!\n"
         for k, v in context.user_data[keyID].items():
             if k == 'type':
-                v = ORbot.TYPE[v]
+                v = ORbot.TYPE[v]['name']
             message += f" - {k}={v}\n"
         query.edit_message_text(text=message, reply_markup=reply_markup)
 
@@ -390,7 +396,7 @@ class ORbot:
         chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
         # Make buttons
-        buttons = [InlineKeyboardButton(ORbot.TYPE[typech], callback_data=f"CH_EDIT {keyID} type={typech}") for typech in ORbot.TYPE]
+        buttons = [InlineKeyboardButton(ORbot.TYPE[typech]['name'], callback_data=f"CH_EDIT {keyID} type={typech}") for typech in ORbot.TYPE]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         query.edit_message_text(text=f"{title}", reply_markup=reply_markup)
 
@@ -462,7 +468,7 @@ class ORbot:
         message = f"{chat.title} STORED!\n"
         for k, v in context.user_data[keyID].items():
             if k == 'type':
-                v = ORbot.TYPE[v]
+                v = ORbot.TYPE[v]['name']
             message += f" - {k}={v}\n"
         # remove key from user_data list
         del context.user_data[keyID]
@@ -521,9 +527,13 @@ class ORbot:
             # Make flag lang
             # slang = flag(channel.get('lang', 'ita'))
             is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
+            # Load icon type channel
+            icon = ORbot.TYPE[str(level)].get('icon', '')
+            if icon:
+                icon = f"[{icon}] "
             # Check if this group can see other group with same level
             if local_level <= level and link is not None:
-                buttons += [InlineKeyboardButton(name + is_admin, url=link)]
+                buttons += [InlineKeyboardButton(icon + name + is_admin, url=link)]
         return InlineKeyboardMarkup(build_menu(buttons, 1))
 
     def unknown(self, update, context):
