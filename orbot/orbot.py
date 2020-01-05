@@ -130,6 +130,12 @@ class ORbot:
     class BotException(Exception):
         pass
 
+    TYPE = {"-10": "Administration",
+            "-1": "Hidden",
+            "0": "Private",
+            "10": "Public"
+            }
+
     def __init__(self, settings_file):
         # Load settings
         self.settings_file = settings_file
@@ -190,8 +196,7 @@ class ORbot:
     def isMember(self, context, user_id):
         for chat_id in self.settings['channels']:
             try:
-                member = context.bot.get_chat_member(chat_id, user_id)
-                print(member)
+                _ = context.bot.get_chat_member(chat_id, user_id)
                 return True
             except TelegramError:
                 pass
@@ -239,7 +244,7 @@ class ORbot:
         for chat_id in self.groups:
             title = context.bot.getChat(chat_id).title
             buttons += [InlineKeyboardButton(title + " [NEW!]", callback_data=f"CH_EDIT {keyID} id={chat_id}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
@@ -258,18 +263,25 @@ class ORbot:
             context.user_data[keyID][name] = value
         # Read chat_id
         chat_id = context.user_data[keyID]['id']
+        # Populate configuration
+        if chat_id in self.settings['channels']:
+            for k, v in self.settings['channels'][chat_id].items():
+                if k not in context.user_data[keyID]:
+                    context.user_data[keyID][k] = v
+        # Read title
         title = context.bot.getChat(chat_id).title
         # Make buttons
         buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
-                InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
-                InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}"),
-                InlineKeyboardButton("Notify", callback_data=f"CH_NOTIFY {keyID}"),
-                InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3))
+                   InlineKeyboardButton("Notify", callback_data=f"CH_NOTIFY {keyID}"),
+                   InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
+                   InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         # Make message
-        level = int(self.settings['channels'][str(chat_id)].get('type', 0)) if str(chat_id) in self.settings['channels'] else 0
-        level_msg = 'restricted' if level == -1 else 'private'
-        message = f"{title}\n - type={level_msg}"
+        message = f"{title}\n"
+        for k, v in context.user_data[keyID].items():
+            if k == 'type':
+                v = ORbot.TYPE[v]
+            message += f" - {k}={v}\n"
         query.edit_message_text(text=message, reply_markup=reply_markup)
 
     @check_key_id('Error message')
@@ -281,9 +293,8 @@ class ORbot:
         chat_id = context.user_data[keyID]['id']
         title = context.bot.getChat(chat_id).title
         # Make buttons
-        buttons = [InlineKeyboardButton("Private", callback_data=f"CH_EDIT {keyID} type=0"),
-                InlineKeyboardButton("Restricted", callback_data=f"CH_EDIT {keyID} type=-1")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+        buttons = [InlineKeyboardButton(ORbot.TYPE[typech], callback_data=f"CH_EDIT {keyID} type={typech}") for typech in ORbot.TYPE]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         query.edit_message_text(text=f"{title}", reply_markup=reply_markup)
 
     def notifyNewChat(self, update, context, chat_id):
@@ -347,13 +358,19 @@ class ORbot:
         if int(chat_id) in self.groups:
             # Remove from groups list
             self.groups.remove(int(chat_id))
-        # remove key from user_data list
-        del context.user_data[keyID]
         # Save to CSV file
         with open(self.settings_file, 'w') as fp:
             json.dump(self.settings, fp)
+        # Make message
+        message = f"{chat.title} STORED!\n"
+        for k, v in context.user_data[keyID].items():
+            if k == 'type':
+                v = ORbot.TYPE[v]
+            message += f" - {k}={v}\n"
+        # remove key from user_data list
+        del context.user_data[keyID]
         # edit message
-        query.edit_message_text(text=f"{chat.title} Saved")
+        query.edit_message_text(text=message)
 
     @check_key_id('Error message')
     def ch_remove(self, update, context):
@@ -395,7 +412,6 @@ class ORbot:
             logger.debug(f"{local_chat.title} = {local_level}")
         else:
             local_level = self.getLevel(context, local_chat_id)
-            print(local_level)
         for chat_id in self.settings['channels']:
             chat = context.bot.getChat(chat_id)
             name = chat.title
