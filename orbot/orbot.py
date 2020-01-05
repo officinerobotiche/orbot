@@ -543,13 +543,13 @@ class ORbot:
     def add_group(self, update, context):
         for member in update.message.new_chat_members:
             print(member)
-            if not member.is_bot:
-                if member.user.username != context.bot.username:
-                    # Build list channels buttons
-                    reply_markup = self.getChannels(update, context)
-                    context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{member.username} Welcome! All channels avalable are:",
-                                             reply_markup=reply_markup)
+            if not member.is_bot and not self.isMember(context, member.id):
+                # Build list channels buttons
+                reply_markup = self.getChannels(update, context)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{member.username} Welcome! All channels avalable are:",
+                                         reply_markup=reply_markup)
+                break
 
     @register
     def start(self, update, context):
