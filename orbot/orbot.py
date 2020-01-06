@@ -421,8 +421,9 @@ class ORbot:
         level = int(self.settings['channels'][chat_id].get('type', 0)) if chat_id in self.settings['channels'] else 0
 
         for l_chat_id in self.settings['channels']:
-            l_level = int(self.settings['channels'][chat_id].get('type', 0))
+            l_level = int(self.settings['channels'][l_chat_id].get('type', 0))
             # Check if this group can see other group with same level
+            logger.info(f"level {chat.title}={level}, {l_chat_id}={l_level}")
             if l_chat_id == str(chat_id):
                 context.bot.send_message(chat_id=l_chat_id, text=f"Hi! I'm activate")
             else:
@@ -438,12 +439,22 @@ class ORbot:
         keyID = data[1]
         chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
-        # Notify new chat in all chats
-        self.notifyNewChat(update, context, chat_id)
-        # remove key from user_data list
-        del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=f"{chat.title} Notification sent!")
+        if len(data) > 2:
+            if data[2] == 'True':
+                # Notify new chat in all chats
+                self.notifyNewChat(update, context, chat_id)
+                # edit message
+                query.edit_message_text(text=f"{chat.title} Notification sent!")
+            else:
+                # edit message
+                query.edit_message_text(text=f"Abort!")
+            # remove key from user_data list
+            del context.user_data[keyID]
+        else:
+            buttons = [InlineKeyboardButton("📩 SEND!", callback_data=f"CH_NOTIFY {keyID} True"),
+                       InlineKeyboardButton("🚫 Abort", callback_data=f"CH_NOTIFY {keyID} False")]
+            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+            query.edit_message_text(text=f"Send notifications of {chat.title} in all channels?", reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def ch_save(self, update, context):
@@ -555,15 +566,19 @@ class ORbot:
 
     @register
     def add_group(self, update, context):
+        new_members = []
         for member in update.message.new_chat_members:
             isMember = self.isMember(context, member.id)
             if not member.is_bot and update.effective_chat.id in isMember and len(isMember) == 1:
-                # Build list channels buttons
-                reply_markup = self.getChannels(update, context)
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"{member.username} Welcome! All channels avalable are:",
-                                         reply_markup=reply_markup)
-                break
+                new_members += [member.username]
+        # If there are new members send welcome
+        if new_members:
+            # Build list channels buttons
+            members_string = ", ".join(new_members)
+            reply_markup = self.getChannels(update, context)
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{members_string} Welcome! All channels avalable are:",
+                                     reply_markup=reply_markup)
 
     @register
     def start(self, update, context):
