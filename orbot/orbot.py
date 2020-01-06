@@ -207,7 +207,7 @@ class ORbot:
         for chat_id in self.settings['channels']:
             try:
                 chat = context.bot.get_chat_member(chat_id, user_id)
-                if chat.status != 'left':
+                if chat.status not in ['left', 'kicked']:
                     chat_member +=[int(chat_id)]
             except TelegramError:
                 pass
