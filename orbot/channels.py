@@ -35,7 +35,7 @@ from functools import wraps
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin
+from .utils import build_menu, check_key_id, isAdmin, filter_channel
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class Channels:
     TYPE = {"-10": {'name': "Administration", 'icon': '🔐'},
             "-1": {'name': "Hidden", 'icon': '🕶'},
             "0": {'name': "Private"},
-            "10": {'name': "Public", 'icon': '📢'}
+            "10": {'name': "Public", 'icon': '💬'}
             }
 
     def __init__(self, updater, settings, settings_file):
@@ -109,12 +109,19 @@ class Channels:
     def register_chat(self, update, context):
         type_chat = update.effective_chat.type
         chat_id = update.effective_chat.id
-        if 'group' in type_chat:
+        if type_chat in ['group', 'supergroup', 'channel']:
             if chat_id not in self.groups and str(chat_id) not in self.settings['channels']:
                 self.groups += [chat_id]
 
     def isRestricted(self, update, context):
-        return True if update.effective_user.id not in self.LIST_OF_ADMINS else False
+        if update.effective_user.id in self.LIST_OF_ADMINS:
+            return False
+        for chat_id in self.settings['channels']:
+            username = update.message.from_user.username
+            if self.settings['channels'][chat_id].get('admin', False):
+                if isAdmin(update, context, username, chat_id=int(chat_id)):
+                    return False
+        return True
 
     def isAllowed(self, update, context):
         type_chat = []
@@ -142,7 +149,7 @@ class Channels:
         for chat_id in self.settings['channels']:
             try:
                 _ = context.bot.get_chat_member(chat_id, int(user_id))
-                level_ch = int(self.settings['channels'][chat_id].get('type', 0))
+                level_ch = int(self.settings['channels'][chat_id].get('type', "0"))
                 level = level_ch if level_ch <= level else level
             except TelegramError:
                 pass
@@ -153,7 +160,7 @@ class Channels:
         local_chat_id = str(update.effective_chat.id)
         if local_chat_id in self.settings['channels']:
             local_chat = context.bot.getChat(local_chat_id)
-            local_level = int(self.settings['channels'][local_chat_id].get('type', 0))
+            local_level = int(self.settings['channels'][local_chat_id].get('type', "0"))
             logger.debug(f"{local_chat.title} = {local_level}")
         else:
             local_level = self.getLevel(context, local_chat_id)
@@ -161,7 +168,7 @@ class Channels:
             chat = context.bot.getChat(chat_id)
             name = chat.title
             link = chat.invite_link
-            level = int(self.settings['channels'][chat_id].get('type', 0))
+            level = int(self.settings['channels'][chat_id].get('type', "0"))
             if isAdmin(update, context, context.bot.username, chat_id=chat_id):
                 # If None generate a link
                 if link is None:
@@ -170,15 +177,14 @@ class Channels:
             # slang = flag(channel.get('lang', 'ita'))
             is_admin = ' (Bot not Admin)' if not isAdmin(update, context, context.bot.username, chat_id=chat_id) else ''
             # Load icon type channel
-            icon = Channels.TYPE[str(level)].get('icon', '')
-            if icon:
-                icon = f"[{icon}] "
+            icon_string = self.getIcons(context, chat_id)
             # Check if this group can see other group with same level
             if local_level <= level and link is not None:
-                buttons += [InlineKeyboardButton(icon + name + is_admin, url=link)]
+                buttons += [InlineKeyboardButton(icon_string + name + is_admin, url=link)]
         return InlineKeyboardMarkup(build_menu(buttons, 1))
 
     @register
+    @filter_channel
     @rtype(['channel', 'member'])
     def cmd_channels(self, update, context):
         """ List all channels availables """
@@ -187,6 +193,20 @@ class Channels:
         # Send message without reply in group
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
+    def getIcons(self, context, chat_id):
+        chat = context.bot.getChat(chat_id)
+        level = self.settings['channels'][chat_id].get('type', "0")
+        admin = self.settings['channels'][chat_id].get('admin', False)
+        icons = []
+        icons = icons + ['📢'] if chat.type == 'channel' else icons
+        icon_type = Channels.TYPE[level].get('icon', '')
+        icons = icons + [icon_type] if icon_type else icons
+        icons = icons + ['👑'] if admin else icons
+        if icons:
+            return f"[" + ",".join(icons) + "] "
+        return ""
+
+    @filter_channel
     @restricted
     def ch_list(self, update, context):
         """ Bot manager """
@@ -195,16 +215,16 @@ class Channels:
         # Extract chat id
         buttons = []
         for chat_id in self.settings['channels']:
-            title = context.bot.getChat(chat_id).title
-            level = self.settings['channels'][chat_id].get('type', "0")
+            chat = context.bot.getChat(chat_id)
+            title = chat.title
             # Load icon type channel
-            icon = Channels.TYPE[level].get('icon', '')
-            if icon:
-                icon = f"[{icon}] "
-            buttons += [InlineKeyboardButton(icon + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
+            icon_string = self.getIcons(context, chat_id)
+            buttons += [InlineKeyboardButton(icon_string + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         for chat_id in self.groups:
-            title = context.bot.getChat(chat_id).title
-            buttons += [InlineKeyboardButton("[NEW!] " + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
+            chat = context.bot.getChat(chat_id)
+            title = chat.title
+            isChannel = '📢' if chat.type == 'channel' else ''
+            buttons += [InlineKeyboardButton(f"[{isChannel}NEW!] " + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         message = 'List of new groups:' if buttons else 'No new groups'
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
@@ -235,12 +255,14 @@ class Channels:
                 if k not in context.user_data[keyID]:
                     context.user_data[keyID][k] = v
         # Make buttons
-        type_chat = Channels.TYPE[context.user_data[keyID].get('type', 0)]
-        buttons = [InlineKeyboardButton(type_chat.get('icon', '👥') + " Type",
-                                        callback_data=f"CH_TYPE {keyID}"),
-                   InlineKeyboardButton(("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin",
-                                        callback_data=f"CH_ADMIN {keyID}"),
-                   InlineKeyboardButton("🔈 Notify",
+        type_chat = Channels.TYPE[context.user_data[keyID].get('type', "0")]
+        buttons = []
+        if chat.type != 'channel':
+            buttons += [InlineKeyboardButton(type_chat.get('icon', '👥') + " Type",
+                                             callback_data=f"CH_TYPE {keyID}"),
+                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin",
+                                             callback_data=f"CH_ADMIN {keyID}")]
+        buttons += [InlineKeyboardButton("🔈 Notify",
                                         callback_data=f"CH_NOTIFY {keyID}"),
                    InlineKeyboardButton("🔗 Gen new link",
                                         callback_data=f"CH_LINK {keyID}"),
@@ -290,7 +312,7 @@ class Channels:
         if 'type' in context.user_data[keyID]:
             level = int(context.user_data[keyID]['type'])
         elif chat_id in self.settings['channels']:
-            level = int(self.settings['channels'][chat_id].get('type', 0))
+            level = int(self.settings['channels'][chat_id].get('type', "0"))
         else:
             level = 0
         for typech in Channels.TYPE:
@@ -306,14 +328,17 @@ class Channels:
         chat = context.bot.getChat(chat_id)
         name = chat.title
         link = chat.invite_link
-        level = int(self.settings['channels'][chat_id].get('type', 0)) if chat_id in self.settings['channels'] else 0
+        level = int(self.settings['channels'][chat_id].get('type', "0")) if chat_id in self.settings['channels'] else 0
 
         for l_chat_id in self.settings['channels']:
-            l_level = int(self.settings['channels'][l_chat_id].get('type', 0))
+            l_level = int(self.settings['channels'][l_chat_id].get('type', "0"))
+            l_chat = context.bot.getChat(l_chat_id)
             # Check if this group can see other group with same level
             logger.info(f"level {chat.title}={level}, {l_chat_id}={l_level}")
             if l_chat_id == str(chat_id):
-                context.bot.send_message(chat_id=l_chat_id, text=f"Hi! I'm activate")
+                # Send local message only if not a channel
+                if l_chat.type != 'channel':
+                    context.bot.send_message(chat_id=l_chat_id, text=f"Hi! I'm activate")
             else:
                 if l_level <= level and link is not None:
                     reply_markup = InlineKeyboardMarkup(build_menu([InlineKeyboardButton(name, url=link)], 1))

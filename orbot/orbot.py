@@ -40,7 +40,7 @@ from uuid import uuid4
 import sys
 from threading import Thread
 
-from .utils import build_menu, check_key_id, isAdmin
+from .utils import build_menu, check_key_id, isAdmin, filter_channel
 from .channels import Channels
 from .config import Config
 
@@ -163,6 +163,7 @@ class ORbot:
         self.updater.idle()
 
     @register
+    @filter_channel
     def start(self, update, context):
         """ Start ORbot """
         user = update.message.from_user
@@ -175,6 +176,8 @@ class ORbot:
         self.updater.stop()
         os.execl(sys.executable, sys.executable, *sys.argv)
 
+    @filter_channel
+    @rtype(['private'])
     @restricted
     def restart(self, update, context):
         for user_chat_id in self.LIST_OF_ADMINS:
@@ -182,6 +185,7 @@ class ORbot:
         Thread(target=self.stop_and_restart).start()
 
     @register
+    @filter_channel
     def unknown(self, update, context):
         context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
@@ -201,28 +205,31 @@ class ORbot:
                                      text=f"{members_string} Welcome! All channels avalable are:",
                                      reply_markup=reply_markup)
 
-    @rtype(['ch_admin'])
+    @filter_channel
+    @restricted
     def announce(self, update, context):
         chat_id = update.effective_chat.id
         #text = update.message.text
         username = update.message.from_user.username
-        if isAdmin(update, context, username):
-            if context.args:
-                # Generate ID and seperate value from command
-                keyID = str(uuid4())
-                # Store value
-                context.user_data[keyID] = {'message': " ".join(context.args)}
-                # Send a message to the admin user
-                n_channels = len(self.settings['channels'])
-                buttons = [InlineKeyboardButton(f"All {n_channels} groups", callback_data=f"AN_SELECT {keyID} all"),
-                           InlineKeyboardButton("Master channel", callback_data=f"AN_SELECT {keyID} master")]
-                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")))
-                message = f"Message to announce:\n{context.user_data[keyID]['message']}"
-                context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
-            else:
-                context.bot.send_message(chat_id=chat_id, text="Write a message to announce", parse_mode='Markdown')
-        else:
-            context.bot.send_message(chat_id=chat_id, text="You are not admin of this chat, you cannot announce messages", parse_mode='Markdown')
+        chat = context.bot.getChat(chat_id)
+        if chat.type != 'private':
+            if not isAdmin(update, context, username):
+                context.bot.send_message(chat_id=chat_id, text="You are not admin of this chat, you cannot announce messages", parse_mode='Markdown')
+                return
+        if not context.args:
+            context.bot.send_message(chat_id=chat_id, text="Format command:\n/announce [message]", parse_mode='Markdown')
+            return
+        # Generate ID and seperate value from command
+        keyID = str(uuid4())
+        # Store value
+        context.user_data[keyID] = {'message': " ".join(context.args)}
+        # Send a message to the admin user
+        n_channels = len(self.settings['channels'])
+        buttons = [InlineKeyboardButton(f"All {n_channels} groups", callback_data=f"AN_SELECT {keyID} all"),
+                    InlineKeyboardButton("Master channel", callback_data=f"AN_SELECT {keyID} master")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")))
+        message = f"Message to announce:\n{context.user_data[keyID]['message']}"
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def announce_select(self, update, context):
@@ -231,10 +238,14 @@ class ORbot:
         # Extract keyID, chat_id and title
         keyID = data[1]
         message = context.user_data[keyID]['message']
+        # Store the type of message to announce
+        context.user_data[keyID]['type'] = data[2]
+        # Second message ask
         buttons = [InlineKeyboardButton("📢 ANNOUNCE!", callback_data=f"AN_SEND {keyID}"),
                     InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
-        query.edit_message_text(text=f"Announce\n{message}?", reply_markup=reply_markup, parse_mode='Markdown')
+        type_announce = context.user_data[keyID]['type']
+        query.edit_message_text(text=f"Announce *{type_announce}*:\n{message}", reply_markup=reply_markup, parse_mode='Markdown')
 
     @check_key_id('Error message')
     def announce_send(self, update, context):
@@ -243,16 +254,24 @@ class ORbot:
         # Extract keyID, chat_id and title
         keyID = data[1]
         message = context.user_data[keyID]['message']
+        type_announce = context.user_data[keyID]['type']
         for chat_id in self.settings['channels']:
-            #Send message
-            msg = context.bot.send_message(chat_id=int(chat_id), text=message, parse_mode='Markdown', disable_notification=True)
-            # Notify message
-            context.bot.pinChatMessage(chat_id=int(chat_id), message_id=msg.message_id, disable_notification=False)
+            chat = context.bot.getChat(chat_id)
+            if type_announce == 'master':
+                if chat.type == 'channel':
+                    #Send message
+                    msg = context.bot.send_message(chat_id=int(chat_id), text=message, parse_mode='Markdown', disable_notification=True)
+                    # Notify message
+                    context.bot.pinChatMessage(chat_id=int(chat_id), message_id=msg.message_id, disable_notification=False)
+            else:
+                #Send message
+                msg = context.bot.send_message(chat_id=int(chat_id), text=message, parse_mode='Markdown', disable_notification=True)
+                # Notify message
+                context.bot.pinChatMessage(chat_id=int(chat_id), message_id=msg.message_id, disable_notification=False)
         # remove key from user_data list
         del context.user_data[keyID]
         # edit message
-        query.edit_message_text(text=f"Announce:\n\"{message}\"\nSent!", parse_mode='Markdown')
-
+        query.edit_message_text(text=f"Announce *{type_announce}*:\n\"{message}\"\nSent!", parse_mode='Markdown')
 
     @check_key_id('Error message')
     def announce_cancel(self, update, context):
@@ -265,6 +284,8 @@ class ORbot:
         # edit message
         query.edit_message_text(text=f"Abort")
 
+    @register
+    @filter_channel
     def help(self, update, context):
         """ Help list of all commands """
         chat_id = update.effective_chat.id
@@ -278,7 +299,7 @@ class ORbot:
         message += "All commands available in this bot are show below \n"
         # Print all commands availables
         message += " - All /channels available \n"
-        message += " - /pin a message \n"
+        message += " - /announce a message \n"
         message += " - This /help \n"
         # update.message.reply_text(message, parse_mode='HTML')
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')

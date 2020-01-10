@@ -35,7 +35,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramEr
 import logging
 import json
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin
+from .utils import build_menu, check_key_id, isAdmin, filter_channel
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -90,6 +90,8 @@ class Config:
         dp.add_handler(CallbackQueryHandler(self.config_cancel, pattern='CONF_CANCEL'))
         dp.add_handler(CallbackQueryHandler(self.config_notify, pattern='CONF_NOTIFY'))
 
+    @filter_channel
+    @rtype(['private'])
     @restricted
     def config(self, update, context):
         """ Configuration bot """

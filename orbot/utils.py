@@ -57,6 +57,13 @@ def check_key_id(message):
         return wrapped
     return checkKeyID
 
+def filter_channel(func):
+    @wraps(func)
+    def wrapped(self, update, context):
+        if update.effective_chat.type != 'channel':
+            return func(self, update, context)
+        return
+    return wrapped
 
 def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
     menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
