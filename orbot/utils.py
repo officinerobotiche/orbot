@@ -28,10 +28,50 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import logging
 import csv
 from os import path
+from functools import wraps
+from telegram.ext import ConversationHandler
 # Offset flags
 OFFSET = 127462 - ord('A')
+
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def check_key_id(message):
+    def checkKeyID(func):
+        @wraps(func)
+        def wrapped(self, update, context):
+            query = update.callback_query
+            data = query.data.split()
+            # Extract keyID and check
+            keyID = data[1]
+            if keyID not in context.user_data:
+                query.edit_message_text(text=message, parse_mode='HTML')
+                return ConversationHandler.END
+            else:
+                return func(self, update, context)
+        return wrapped
+    return checkKeyID
+
+
+def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
+    menu = [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
+    if header_buttons:
+        menu.insert(0, [header_buttons])
+    if footer_buttons:
+        menu.append([footer_buttons])
+    return menu
+
+
+def isAdmin(context, chat_id):
+    for member in context.bot.getChatAdministrators(chat_id):
+        if member.user.username == context.bot.username:
+            return True
+    return False
 
 
 def hasNumbers(inputString):
