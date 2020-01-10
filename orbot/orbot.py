@@ -229,7 +229,11 @@ class ORbot:
                     InlineKeyboardButton("Master channel", callback_data=f"AN_SELECT {keyID} master")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")))
         message = f"Message to announce:\n{context.user_data[keyID]['message']}"
-        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+        try:
+            context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+        except TelegramError:
+            context.bot.send_message(chat_id=update.effective_user.id, text=message, reply_markup=reply_markup)
+
 
     @check_key_id('Error message')
     def announce_select(self, update, context):
@@ -242,10 +246,31 @@ class ORbot:
         context.user_data[keyID]['type'] = data[2]
         # Second message ask
         buttons = [InlineKeyboardButton("📢 ANNOUNCE!", callback_data=f"AN_SEND {keyID}"),
-                    InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")]
+                   InlineKeyboardButton("📢 ANNOUNCE & 📌 PIN!", callback_data=f"AN_SEND {keyID} PIN"),
+                   InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
         type_announce = context.user_data[keyID]['type']
-        query.edit_message_text(text=f"Announce *{type_announce}*:\n{message}", reply_markup=reply_markup, parse_mode='Markdown')
+        try:
+            query.edit_message_text(text=f"Announce *{type_announce}*:\n{message}", reply_markup=reply_markup, parse_mode='Markdown')
+        except TelegramError:
+            query.edit_message_text(text=f"Announce {type_announce}:\n{message}", reply_markup=reply_markup)
+
+    def sendAnnounce(self, update, context, chat_id):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        message = context.user_data[keyID]['message']
+        pin_message = True if len(data) > 2 else False
+        #Send message
+        try:
+            msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', disable_notification=True)
+        except TelegramError:
+            msg = context.bot.send_message(chat_id=chat_id, text=message, disable_notification=True)
+        if pin_message:
+            # Notify message
+            context.bot.pinChatMessage(chat_id=chat_id, message_id=msg.message_id, disable_notification=False)
+        
 
     @check_key_id('Error message')
     def announce_send(self, update, context):
@@ -260,18 +285,17 @@ class ORbot:
             if type_announce == 'master':
                 if chat.type == 'channel':
                     #Send message
-                    msg = context.bot.send_message(chat_id=int(chat_id), text=message, parse_mode='Markdown', disable_notification=True)
-                    # Notify message
-                    context.bot.pinChatMessage(chat_id=int(chat_id), message_id=msg.message_id, disable_notification=False)
+                    self.sendAnnounce(update, context, chat_id)
             else:
                 #Send message
-                msg = context.bot.send_message(chat_id=int(chat_id), text=message, parse_mode='Markdown', disable_notification=True)
-                # Notify message
-                context.bot.pinChatMessage(chat_id=int(chat_id), message_id=msg.message_id, disable_notification=False)
+                self.sendAnnounce(update, context, chat_id)
         # remove key from user_data list
         del context.user_data[keyID]
         # edit message
-        query.edit_message_text(text=f"Announce *{type_announce}*:\n\"{message}\"\nSent!", parse_mode='Markdown')
+        try:
+            query.edit_message_text(text=f"Announce *{type_announce}*:\n\"{message}\"\nSent!", parse_mode='Markdown')
+        except TelegramError:
+            query.edit_message_text(text=f"Announce {type_announce}:\n\"{message}\"\nSent!")
 
     @check_key_id('Error message')
     def announce_cancel(self, update, context):
@@ -288,15 +312,16 @@ class ORbot:
     @filter_channel
     def help(self, update, context):
         """ Help list of all commands """
-        chat_id = update.effective_chat.id
+        #chat_id = update.effective_chat.id
         message = ""
-        if chat_id in self.LIST_OF_ADMINS:
-            message += "<b>Admin commands:</b>\n"
-            message += " - /start your bot \n"
-            message += " - /settings channels \n"
-            message += " - /config bot \n"
-            message += " - /restart this bot \n"
-        message += "All commands available in this bot are show below \n"
+        if 'private' in self.channels.isAllowed(update, context):
+            if not self.channels.isRestricted(update, context):
+                message += "<b>Admin commands:</b>\n"
+                message += " - /start your bot \n"
+                message += " - /settings channels \n"
+                message += " - /config bot \n"
+                message += " - /restart this bot \n"
+            message += "All commands available in this bot are show below \n"
         # Print all commands availables
         message += " - All /channels available \n"
         message += " - /announce a message \n"

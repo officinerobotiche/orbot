@@ -46,7 +46,7 @@ def restricted(func):
     def wrapped(self, update, context):
         if self.isRestricted(update, context):
             logger.info(f"Unauthorized access denied for {update.effective_user.id}.")
-            update.message.reply_text("Unauthorized access denied.")
+            context.bot.send_message(chat_id=update.effective_chat.id, text="Unauthorized access denied.")
             return
         return func(self, update, context)
     return wrapped
@@ -125,6 +125,9 @@ class Channels:
 
     def isAllowed(self, update, context):
         type_chat = []
+        chat = context.bot.getChat(update.effective_chat.id)
+        if chat.type == 'private':
+            type_chat += [chat.type]
         if str(update.effective_chat.id) in self.settings['channels']:
             type_chat += ['channel']
             if self.settings['channels'][str(update.effective_chat.id)].get('admin', False):
@@ -226,8 +229,8 @@ class Channels:
             isChannel = '📢' if chat.type == 'channel' else ''
             buttons += [InlineKeyboardButton(f"[{isChannel}NEW!] " + title, callback_data=f"CH_EDIT {keyID} id={chat_id}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
-        message = 'List of new groups:' if buttons else 'No new groups'
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+        message = 'List of channels:' if buttons else 'No channels'
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
         context.user_data[keyID] = {}  
 

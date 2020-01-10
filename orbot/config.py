@@ -104,7 +104,7 @@ class Config:
         message = f"Configuration\n"
         for k, v in self.settings['config'].items():
             message += f" - {k}={v}\n"
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
         context.user_data[keyID] = {} 
 
