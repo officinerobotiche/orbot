@@ -67,9 +67,11 @@ def build_menu(buttons, n_cols, header_buttons=None, footer_buttons=None):
     return menu
 
 
-def isAdmin(context, chat_id):
+def isAdmin(update, context, user, chat_id=None):
+    if chat_id is None:
+        chat_id = update.effective_chat.id
     for member in context.bot.getChatAdministrators(chat_id):
-        if member.user.username == context.bot.username:
+        if member.user.username == user:
             return True
     return False
 

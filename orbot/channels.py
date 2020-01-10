@@ -99,6 +99,7 @@ class Channels:
         dp.add_handler(CommandHandler("settings", self.ch_list))
         dp.add_handler(CallbackQueryHandler(self.ch_edit, pattern='CH_EDIT'))
         dp.add_handler(CallbackQueryHandler(self.ch_type, pattern='CH_TYPE'))
+        dp.add_handler(CallbackQueryHandler(self.ch_admin, pattern='CH_ADMIN'))
         dp.add_handler(CallbackQueryHandler(self.ch_save, pattern='CH_SAVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_remove, pattern='CH_REMOVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_notify, pattern='CH_NOTIFY'))
@@ -117,8 +118,10 @@ class Channels:
 
     def isAllowed(self, update, context):
         type_chat = []
-        if update.effective_chat.id in self.settings['channels']:
+        if str(update.effective_chat.id) in self.settings['channels']:
             type_chat += ['channel']
+            if self.settings['channels'][str(update.effective_chat.id)].get('admin', False):
+                type_chat += ['ch_admin']
         if len(self.isMember(context, update.effective_user.id)) > 0:
             type_chat += ['member']
         return type_chat
@@ -159,13 +162,13 @@ class Channels:
             name = chat.title
             link = chat.invite_link
             level = int(self.settings['channels'][chat_id].get('type', 0))
-            if isAdmin(context, chat_id):
+            if isAdmin(update, context, context.bot.username, chat_id=chat_id):
                 # If None generate a link
                 if link is None:
                     link = context.bot.exportChatInviteLink(chat_id)
             # Make flag lang
             # slang = flag(channel.get('lang', 'ita'))
-            is_admin = ' (Bot not Admin)' if not isAdmin(context, chat_id) else ''
+            is_admin = ' (Bot not Admin)' if not isAdmin(update, context, context.bot.username, chat_id=chat_id) else ''
             # Load icon type channel
             icon = Channels.TYPE[str(level)].get('icon', '')
             if icon:
@@ -218,6 +221,10 @@ class Channels:
         for n in range(2, len(data)):
             var = data[n]
             name, value = var.split('=')
+            if value == "True":
+                value = True
+            elif value == "False":
+                value = False
             context.user_data[keyID][name] = value
         # Read chat_id
         chat_id = context.user_data[keyID]['id']
@@ -228,11 +235,19 @@ class Channels:
                 if k not in context.user_data[keyID]:
                     context.user_data[keyID][k] = v
         # Make buttons
-        buttons = [InlineKeyboardButton("Type", callback_data=f"CH_TYPE {keyID}"),
-                   InlineKeyboardButton("Notify", callback_data=f"CH_NOTIFY {keyID}"),
-                   InlineKeyboardButton("Gen link", callback_data=f"CH_LINK {keyID}"),
-                   InlineKeyboardButton("Store", callback_data=f"CH_SAVE {keyID}"),
-                   InlineKeyboardButton("Remove", callback_data=f"CH_REMOVE {keyID}")]
+        type_chat = Channels.TYPE[context.user_data[keyID].get('type', 0)]
+        buttons = [InlineKeyboardButton(type_chat.get('icon', '👥') + " Type",
+                                        callback_data=f"CH_TYPE {keyID}"),
+                   InlineKeyboardButton(("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin",
+                                        callback_data=f"CH_ADMIN {keyID}"),
+                   InlineKeyboardButton("🔈 Notify",
+                                        callback_data=f"CH_NOTIFY {keyID}"),
+                   InlineKeyboardButton("🔗 Gen new link",
+                                        callback_data=f"CH_LINK {keyID}"),
+                   InlineKeyboardButton("🗂 Store",
+                                        callback_data=f"CH_SAVE {keyID}"),
+                   InlineKeyboardButton("🧹 Remove",
+                                        callback_data=f"CH_REMOVE {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         # Make message
         message = f"{chat.title}\n"
@@ -254,7 +269,7 @@ class Channels:
         # remove key from user_data list
         del context.user_data[keyID]
         # generate chat link
-        if isAdmin(context, chat_id):
+        if isAdmin(update, context, context.bot.username, chat_id=chat_id):
             link = context.bot.exportChatInviteLink(chat_id)
             # edit message
             query.edit_message_text(text=f"{chat.title} Link generated:\n{link}")
@@ -318,16 +333,29 @@ class Channels:
                 self.notifyNewChat(update, context, chat_id)
                 # edit message
                 query.edit_message_text(text=f"{chat.title} Notification sent!")
-            else:
-                # edit message
-                query.edit_message_text(text=f"Abort!")
             # remove key from user_data list
             del context.user_data[keyID]
         else:
             buttons = [InlineKeyboardButton("📩 SEND!", callback_data=f"CH_NOTIFY {keyID} True"),
-                       InlineKeyboardButton("🚫 Abort", callback_data=f"CH_NOTIFY {keyID} False")]
+                       InlineKeyboardButton("🚫 Abort", callback_data=f"CH_EDIT {keyID}")]
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
             query.edit_message_text(text=f"Send notifications of {chat.title} in all channels?", reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def ch_admin(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
+        admin = context.user_data[keyID].get('admin', False)
+        buttons = [InlineKeyboardButton("✅ Yes " + ("[X]" if admin else ""),
+                                        callback_data=f"CH_EDIT {keyID} admin=True"),
+                    InlineKeyboardButton("❌ No " + ("" if admin else "[X]"),
+                                        callback_data=f"CH_EDIT {keyID} admin=False")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+        query.edit_message_text(text=f"Set {chat.title} administrator?", reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def ch_save(self, update, context):
@@ -339,7 +367,7 @@ class Channels:
         chat_id = context.user_data[keyID]['id']
         chat = context.bot.getChat(chat_id)
         # generate chat link
-        if isAdmin(context, chat_id):
+        if isAdmin(update, context, context.bot.username, chat_id=chat_id):
             # If None generate a link
             if chat.invite_link is None:
                 context.bot.exportChatInviteLink(chat_id)
