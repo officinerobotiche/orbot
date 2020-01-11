@@ -35,7 +35,7 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, register
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, register,rtype
 
 # Reference
 # https://stackoverflow.com/questions/7160737/python-how-to-validate-a-url-in-python-malformed-or-not
@@ -102,6 +102,9 @@ class Sites:
         # Send message without reply in group
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
+    @filter_channel
+    @rtype(['private'])
+    @restricted
     def start(self, update, context):
         # Generate ID and seperate value from command
         keyID = str(uuid4())
