@@ -150,7 +150,7 @@ class ORbot:
     @register
     @filter_channel
     def unknown(self, update, context):
-        print(update.message.text)
+        logger.info(f"Unknown command: {update.message.text}")
         context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
     @register
