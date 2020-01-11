@@ -206,7 +206,8 @@ class Channels:
         icons = []
         icons = icons + ['📢'] if chat.type == 'channel' else icons
         icon_type = Channels.TYPE[level].get('icon', '')
-        icons = icons + [icon_type] if icon_type else icons
+        if chat.type != 'channel':
+            icons = icons + [icon_type] if icon_type else icons
         icons = icons + ['👑'] if admin else icons
         if icons:
             return f"[" + ",".join(icons) + "] "
@@ -260,6 +261,9 @@ class Channels:
             for k, v in self.settings['channels'][chat_id].items():
                 if k not in context.user_data[keyID]:
                     context.user_data[keyID][k] = v
+        # If this chat is a channel force to be high level
+        if chat.type == 'channel':
+            context.user_data[keyID]['type'] = "10"
         # Make buttons
         type_chat = Channels.TYPE[context.user_data[keyID].get('type', "0")]
         buttons = []
