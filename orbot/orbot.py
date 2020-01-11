@@ -179,13 +179,14 @@ class ORbot:
             if not self.channels.isRestricted(update, context):
                 message += "<b>Admin commands:</b>\n"
                 message += " - /start your bot \n"
+                message += " - /announce a message \n"
                 message += " - /settings channels \n"
                 message += " - /config bot \n"
                 message += " - /restart this bot \n"
             message += "All commands available in this bot are show below \n"
         # Print all commands availables
+        message += " - /info about OR \n"
         message += " - All /channels available \n"
-        message += " - /announce a message \n"
         message += " - This /help \n"
         # update.message.reply_text(message, parse_mode='HTML')
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
