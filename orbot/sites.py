@@ -105,7 +105,7 @@ class Sites:
     def start(self, update, context):
         # Generate ID and seperate value from command
         keyID = str(uuid4())
-        buttons = [InlineKeyboardButton(title, callback_data=f"SITE_CHOOSING {keyID} {title}") for title in self.settings['sites']]
+        buttons = [InlineKeyboardButton("🔗 " + title, callback_data=f"SITE_CHOOSING {keyID} {title}") for title in self.settings['sites']]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1,
                                                        header_buttons=InlineKeyboardButton("New site", callback_data=f"SITE_CHOOSING {keyID}"),
                                                        footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"SITE_CANCEL {keyID}")))
