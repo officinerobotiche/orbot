@@ -41,6 +41,40 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
+def restricted(func):
+    @wraps(func)
+    def wrapped(self, update, context):
+        if self.channels.isRestricted(update, context):
+            logger.info(f"Unauthorized access denied for {update.effective_user.id}.")
+            update.message.reply_text("Unauthorized access denied.")
+            return
+        return func(self, update, context)
+    return wrapped
+
+
+def rtype(rtype):
+    def group(func):
+        @wraps(func)
+        def wrapped(self, update, context):
+            type_chat = self.channels.isAllowed(update, context)
+            if [value for value in rtype if value in type_chat]:
+                return func(self, update, context)
+            logger.info(f"Unauthorized access denied for {update.effective_chat.type}.")
+            context.bot.send_message(chat_id=update.effective_chat.id, text="Unauthorized access denied.")
+            return
+        return wrapped
+    return group
+
+
+def register(func):
+    @wraps(func)
+    def wrapped(self, update, context):
+        # Register group
+        self.channels.register_chat(update, context)
+        return func(self, update, context)
+    return wrapped
+
+
 def check_key_id(message):
     def checkKeyID(func):
         @wraps(func)

@@ -40,9 +40,10 @@ from uuid import uuid4
 import sys
 from threading import Thread
 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, register
 from .channels import Channels
 from .config import Config
+from .announce import Announce
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,39 +57,6 @@ def get_version():
     with open(os.path.join(here, "__init__.py")) as fp:
         VERSION = VERSION_RE.match(fp.read()).group(1)
     return VERSION
-
-
-def restricted(func):
-    @wraps(func)
-    def wrapped(self, update, context):
-        if self.channels.isRestricted(update, context):
-            logger.info(f"Unauthorized access denied for {update.effective_user.id}.")
-            update.message.reply_text("Unauthorized access denied.")
-            return
-        return func(self, update, context)
-    return wrapped
-
-
-def rtype(rtype):
-    def group(func):
-        @wraps(func)
-        def wrapped(self, update, context):
-            type_chat = self.channels.isAllowed(update, context)
-            if [value for value in rtype if value in type_chat]:
-                return func(self, update, context)
-            logger.info(f"Unauthorized access denied for {update.effective_chat.type}.")
-            context.bot.send_message(chat_id=update.effective_chat.id, text="Unauthorized access denied.")
-            return
-        return wrapped
-    return group
-
-def register(func):
-    @wraps(func)
-    def wrapped(self, update, context):
-        # Register group
-        self.channels.register_chat(update, context)
-        return func(self, update, context)
-    return wrapped
 
 
 class ORbot:
@@ -127,16 +95,14 @@ class ORbot:
         self.channels = Channels(self.updater, self.settings, self.settings_file)
         # Configuration manager
         self.config = Config(self.updater, self.settings, self.settings_file, self.channels)
+        # Announce manager
+        self.announce = Announce(self.updater, self.settings, self.settings_file, self.channels)
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Add commands
         dp.add_handler(CommandHandler("start", self.start))
         dp.add_handler(CommandHandler("help", self.help))
         dp.add_handler(CommandHandler('restart', self.restart))
-        dp.add_handler(CommandHandler('announce', self.announce))
-        dp.add_handler(CallbackQueryHandler(self.announce_select, pattern='AN_SELECT'))
-        dp.add_handler(CallbackQueryHandler(self.announce_send, pattern='AN_SEND'))
-        dp.add_handler(CallbackQueryHandler(self.announce_cancel, pattern='AN_CANCEL'))
         # Unknown handler
         unknown_handler = MessageHandler(Filters.command, self.unknown)
         dp.add_handler(unknown_handler)
@@ -204,109 +170,6 @@ class ORbot:
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"{members_string} Welcome! All channels avalable are:",
                                      reply_markup=reply_markup)
-
-    @filter_channel
-    @restricted
-    def announce(self, update, context):
-        chat_id = update.effective_chat.id
-        #text = update.message.text
-        username = update.message.from_user.username
-        chat = context.bot.getChat(chat_id)
-        if chat.type != 'private':
-            if not isAdmin(update, context, username):
-                context.bot.send_message(chat_id=chat_id, text="You are not admin of this chat, you cannot announce messages", parse_mode='Markdown')
-                return
-        if not context.args:
-            context.bot.send_message(chat_id=chat_id, text="Format command:\n/announce [message]", parse_mode='Markdown')
-            return
-        # Generate ID and seperate value from command
-        keyID = str(uuid4())
-        # Store value
-        context.user_data[keyID] = {'message': " ".join(context.args)}
-        # Send a message to the admin user
-        n_channels = len(self.settings['channels'])
-        buttons = [InlineKeyboardButton(f"All {n_channels} groups", callback_data=f"AN_SELECT {keyID} all"),
-                    InlineKeyboardButton("Master channel", callback_data=f"AN_SELECT {keyID} master")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")))
-        message = f"Message to announce:\n{context.user_data[keyID]['message']}"
-        try:
-            context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
-        except TelegramError:
-            context.bot.send_message(chat_id=update.effective_user.id, text=message, reply_markup=reply_markup)
-
-
-    @check_key_id('Error message')
-    def announce_select(self, update, context):
-        query = update.callback_query
-        data = query.data.split()
-        # Extract keyID, chat_id and title
-        keyID = data[1]
-        message = context.user_data[keyID]['message']
-        # Store the type of message to announce
-        context.user_data[keyID]['type'] = data[2]
-        # Second message ask
-        buttons = [InlineKeyboardButton("📢 ANNOUNCE!", callback_data=f"AN_SEND {keyID}"),
-                   InlineKeyboardButton("📢 ANNOUNCE & 📌 PIN!", callback_data=f"AN_SEND {keyID} PIN"),
-                   InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
-        type_announce = context.user_data[keyID]['type']
-        try:
-            query.edit_message_text(text=f"Announce *{type_announce}*:\n{message}", reply_markup=reply_markup, parse_mode='Markdown')
-        except TelegramError:
-            query.edit_message_text(text=f"Announce {type_announce}:\n{message}", reply_markup=reply_markup)
-
-    def sendAnnounce(self, update, context, chat_id):
-        query = update.callback_query
-        data = query.data.split()
-        # Extract keyID, chat_id and title
-        keyID = data[1]
-        message = context.user_data[keyID]['message']
-        pin_message = True if len(data) > 2 else False
-        #Send message
-        try:
-            msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', disable_notification=True)
-        except TelegramError:
-            msg = context.bot.send_message(chat_id=chat_id, text=message, disable_notification=True)
-        if pin_message:
-            # Notify message
-            context.bot.pinChatMessage(chat_id=chat_id, message_id=msg.message_id, disable_notification=False)
-        
-
-    @check_key_id('Error message')
-    def announce_send(self, update, context):
-        query = update.callback_query
-        data = query.data.split()
-        # Extract keyID, chat_id and title
-        keyID = data[1]
-        message = context.user_data[keyID]['message']
-        type_announce = context.user_data[keyID]['type']
-        for chat_id in self.settings['channels']:
-            chat = context.bot.getChat(chat_id)
-            if type_announce == 'master':
-                if chat.type == 'channel':
-                    #Send message
-                    self.sendAnnounce(update, context, chat_id)
-            else:
-                #Send message
-                self.sendAnnounce(update, context, chat_id)
-        # remove key from user_data list
-        del context.user_data[keyID]
-        # edit message
-        try:
-            query.edit_message_text(text=f"Announce *{type_announce}*:\n\"{message}\"\nSent!", parse_mode='Markdown')
-        except TelegramError:
-            query.edit_message_text(text=f"Announce {type_announce}:\n\"{message}\"\nSent!")
-
-    @check_key_id('Error message')
-    def announce_cancel(self, update, context):
-        query = update.callback_query
-        data = query.data.split()
-        # Extract keyID, chat_id and title
-        keyID = data[1]
-        # remove key from user_data list
-        del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=f"Abort")
 
     @register
     @filter_channel
