@@ -195,7 +195,7 @@ class Channels:
     def cmd_channels(self, update, context):
         """ List all channels availables """
         reply_markup = self.getChannels(update, context)
-        message = "All channels available are:" if reply_markup else 'No channels available'
+        message = "All channels available are:" if self.settings['channels'] else 'No channels available'
         # Send message without reply in group
         context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 

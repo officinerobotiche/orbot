@@ -28,15 +28,24 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import re
 import json
 from uuid import uuid4
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, register
 
-from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
+# Reference
+# https://stackoverflow.com/questions/7160737/python-how-to-validate-a-url-in-python-malformed-or-not
+weblink = re.compile(
+          r'^(?:http|ftp)s?://' # http:// or https://
+          r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
+          r'localhost|' #localhost...
+          r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+          r'(?::\d+)?' # optional port
+          r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,6 +67,8 @@ class Sites:
         self.keyID = None
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
+        # Add site list
+        dp.add_handler(CommandHandler("info", self.cmd_info))
         # Add site conversation
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('sites', self.start)],
@@ -74,6 +85,22 @@ class Sites:
         dp.add_handler(conv_handler)
         # self counter
         self.counter = 0
+
+    def getSites(self):
+        buttons = []
+        for title, link in self.settings['sites'].items():
+            if re.match(weblink, link) is not None:
+                buttons += [InlineKeyboardButton(title, url=link)]
+        return buttons
+
+    @register
+    @filter_channel
+    def cmd_info(self, update, context):
+        """ List all info availables """
+        reply_markup = InlineKeyboardMarkup(build_menu(self.getSites(), 1))
+        message = "Welcome in OR all websites:" if self.settings['sites'] else 'No websites!'
+        # Send message without reply in group
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
     def start(self, update, context):
         # Generate ID and seperate value from command
@@ -121,11 +148,19 @@ class Sites:
     def typing(self, update, context):
         # Read keyID
         keyID = self.keyID
-        # Clean keyID value
-        self.keyID = None
         self.counter = 0
         # Read state
         state = context.user_data[keyID]['state']
+        if state == 'link':
+            # Reference
+            # https://stackoverflow.com/questions/7160737/python-how-to-validate-a-url-in-python-malformed-or-not
+            if re.match(weblink, update.message.text) is None:
+                reply_markup = InlineKeyboardMarkup(build_menu([InlineKeyboardButton("Undo", callback_data=f"SITE_CHOOSING {keyID}")], 1))
+                context.bot.send_message(chat_id=update.effective_chat.id, 
+                                         text="Link not valid retry", parse_mode='HTML', reply_markup=reply_markup, disable_web_page_preview=True)
+                return CHOOSING
+        # Clean keyID value
+        self.keyID = None
         # Set value
         context.user_data[keyID][state] = update.message.text
         # Make message
@@ -155,7 +190,7 @@ class Sites:
             value = ""
         # edit message
         reply_markup = InlineKeyboardMarkup(build_menu([InlineKeyboardButton("Undo", callback_data=f"SITE_CHOOSING {keyID}")], 1))
-        query.edit_message_text(text=f"Write *{state}* or press undo{value}", parse_mode='Markdown', reply_markup=reply_markup)
+        query.edit_message_text(text=f"Write *{state}* or press undo{value}", parse_mode='Markdown', reply_markup=reply_markup, disable_web_page_preview=True)
         return CHOOSING
 
     @check_key_id('Error message')
@@ -164,11 +199,12 @@ class Sites:
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
-        self.keyID = None
         self.counter = 0
         message = f"Abort"
-        # remove key from user_data list
-        del context.user_data[keyID]
+        if keyID in context.user_data:
+            # remove key from user_data list
+            del context.user_data[keyID]
+        self.keyID = None
         # edit message
         query.edit_message_text(text=message)
         return ConversationHandler.END

@@ -4,7 +4,7 @@ OR BOT
 Telegram bot manager
 
 ```
-announce - Announce a new message for the community
+info - All communities sites
 channels - All channels available
 help - bot help
 ```
