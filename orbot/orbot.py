@@ -181,6 +181,7 @@ class ORbot:
                 message += " - /start your bot \n"
                 message += " - /announce a message \n"
                 message += " - /settings channels \n"
+                message += " - Configuration /sites \n"
                 message += " - /config bot \n"
                 message += " - /restart this bot \n"
             message += "All commands available in this bot are show below \n"
