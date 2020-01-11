@@ -44,6 +44,7 @@ from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted
 from .channels import Channels
 from .config import Config
 from .announce import Announce
+from .sites import Sites
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -72,12 +73,6 @@ class ORbot:
                 self.settings = json.load(stream)
         except FileNotFoundError:
             raise ORbot.BotException(f"Setting file in {self.settings_file} not found")
-        # Initialize channels if empty
-        if 'channels' not in self.settings:
-            self.settings['channels'] = {}
-        # Initialize config if empty
-        if 'config' not in self.settings:
-            self.settings['config'] = {}
         if 'telegram' not in self.settings:
             raise ORbot.BotException(f"telegram config is not defined on {self.settings_file}")
         telegram = self.settings['telegram']
@@ -97,6 +92,8 @@ class ORbot:
         self.config = Config(self.updater, self.settings, self.settings_file, self.channels)
         # Announce manager
         self.announce = Announce(self.updater, self.settings, self.settings_file, self.channels)
+        # Sites manager
+        self.sites = Sites(self.updater, self.settings, self.settings_file, self.channels)
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Add commands
@@ -153,6 +150,7 @@ class ORbot:
     @register
     @filter_channel
     def unknown(self, update, context):
+        print(update.message.text)
         context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
     @register

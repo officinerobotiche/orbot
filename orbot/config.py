@@ -48,6 +48,9 @@ class Config:
         self.settings_file = settings_file
         self.settings = settings
         self.channels = channels
+        # Initialize config if empty
+        if 'config' not in self.settings:
+            self.settings['config'] = {}
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Configuration

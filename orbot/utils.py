@@ -46,7 +46,7 @@ def restricted(func):
     def wrapped(self, update, context):
         if self.channels.isRestricted(update, context):
             logger.info(f"Unauthorized access denied for {update.effective_user.id}.")
-            update.message.reply_text("Unauthorized access denied.")
+            context.bot.send_message(chat_id=update.effective_chat.id, text="Unauthorized access denied.")
             return
         return func(self, update, context)
     return wrapped

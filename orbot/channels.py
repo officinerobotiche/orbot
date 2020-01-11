@@ -87,6 +87,9 @@ class Channels:
         self.updater = updater
         self.settings_file = settings_file
         self.settings = settings
+        # Initialize channels if empty
+        if 'channels' not in self.settings:
+            self.settings['channels'] = {}
         # Extract list of admins
         telegram = self.settings['telegram']
         self.LIST_OF_ADMINS = telegram['admins']
@@ -232,7 +235,7 @@ class Channels:
         message = 'List of channels:' if buttons else 'No channels'
         context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
-        context.user_data[keyID] = {}  
+        context.user_data[keyID] = {}
 
     @check_key_id('Error message')
     def ch_edit(self, update, context):

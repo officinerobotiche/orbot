@@ -1,5 +1,3 @@
-# Common
-pyyaml
 # Telegram bot
 python-telegram-bot
 #emoji
