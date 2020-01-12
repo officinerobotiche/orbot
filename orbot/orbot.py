@@ -132,7 +132,7 @@ class ORbot:
         user = update.message.from_user
         logger.info(f"New user join {user['first_name']}")
         message = 'Welcome to ORbot'
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML')
 
     def stop_and_restart(self):
         """Gracefully stop the Updater and replace the current process with a new one"""

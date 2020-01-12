@@ -126,6 +126,15 @@ class Channels:
                     return False
         return True
 
+    def isAdmin(self, update, context):
+        if update.effective_user.id in self.LIST_OF_ADMINS:
+            return True
+        for chat_id in self.settings['channels']:
+            username = update.message.from_user.username
+            if isAdmin(update, context, username, chat_id=int(chat_id)):
+                return True
+        return False
+
     def isAllowed(self, update, context):
         type_chat = []
         chat = context.bot.getChat(update.effective_chat.id)
