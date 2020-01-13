@@ -103,7 +103,7 @@ class Announce:
         # Only for admin in admin groups
         if not self.channels.isRestricted(update, context):
             n_channels = len(self.settings['channels'])
-            buttons += [InlineKeyboardButton(f"📢📢📢 Announce in *all* {n_channels} channels", callback_data=f"AN_SEND {keyID} ALL", parse_mode='Markdown')]
+            buttons += [InlineKeyboardButton(f"📢📢📢 Announce in all {n_channels} channels", callback_data=f"AN_SEND {keyID} ALL")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2,
                                             footer_buttons=InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")))
         # Extract chat id
@@ -150,11 +150,12 @@ class Announce:
         # Check forward in all chats
         all = False
         if len(data) > 2:
-            if data[2] == 'ALL':
-                all = True
+            all = True if data[2] == 'ALL' else False
         if all:
-            logger.info(f"Send in all chats")
-            for n_chat_id in [value for value in self.settings['channels'] if value not in [chat_id, main_chat]]:
+            ch_all = list(self.settings['channels'].keys())
+            logger.info(f"Send in all other {len(ch_all)} chats")
+            # Difference list between all channels and main chat
+            for n_chat_id in [value for value in ch_all if value not in [chat_id, str(main_chat)]]:
                 context.bot.forward_message(chat_id=n_chat_id, from_chat_id=chat_id, message_id=msg.message_id)
         # remove key from user_data list
         del context.user_data[keyID]
