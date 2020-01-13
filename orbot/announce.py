@@ -73,30 +73,33 @@ class Announce:
         keyID = str(uuid4())
         # Store value
         context.user_data[keyID] = {'message': message, 'main_chat': chat_id}
-        # Send a message to the admin user
-        buttons = []
-        for chat_id in self.settings['channels']:
-            chat = context.bot.getChat(chat_id)
-            if chat.type == 'channel':
-                icons = self.channels.getIcons(context, chat_id)
-                buttons += [InlineKeyboardButton(icons + chat.title, callback_data=f"AN_SELECT {keyID} {chat_id}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")))
-        message = f"Message to announce:\n{context.user_data[keyID]['message']}"
+        # Check if set default channel
+        def_ch = self.settings['config'].get('dch', None)
+        if def_ch is not None:
+            context.user_data[keyID]['chat_id'] = def_ch
+            message, reply_markup = self.type_announce(update, context, keyID)
+        else:
+            # Send a message to the admin user
+            buttons = []
+            for chat_id in self.settings['channels']:
+                chat = context.bot.getChat(chat_id)
+                if chat.type == 'channel':
+                    icons = self.channels.getIcons(context, chat_id)
+                    buttons += [InlineKeyboardButton(icons + chat.title, callback_data=f"AN_SELECT {keyID} {chat_id}")]
+            # Footer button
+            footer_button = InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")
+            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=footer_button))
+            message = f"Message to announce:\n{context.user_data[keyID]['message']}"
         try:
             context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
         except TelegramError:
             context.bot.send_message(chat_id=update.effective_user.id, text=message, reply_markup=reply_markup)
 
-
-    @check_key_id('Error message')
-    def announce_select(self, update, context):
-        query = update.callback_query
-        data = query.data.split()
-        # Extract keyID, chat_id and title
-        keyID = data[1]
+    def type_announce(self, update, context, keyID):
         message = context.user_data[keyID]['message']
-        # Store the type of message to announce
-        context.user_data[keyID]['chat_id'] = data[2]
+        chat_id = context.user_data[keyID]['chat_id']
+        chat = context.bot.getChat(chat_id)
+        message = f"*Announce* {chat.title}:\n{message}"
         # Second message ask
         buttons = [InlineKeyboardButton("📢 Announce", callback_data=f"AN_SEND {keyID}"),
                    InlineKeyboardButton("📢 Announce & 📌 Pin", callback_data=f"AN_SEND {keyID} PIN")]
@@ -106,13 +109,22 @@ class Announce:
             buttons += [InlineKeyboardButton(f"📢📢📢 Announce in all {n_channels} channels", callback_data=f"AN_SEND {keyID} ALL")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2,
                                             footer_buttons=InlineKeyboardButton("🚫 Abort", callback_data=f"AN_CANCEL {keyID}")))
+        return message, reply_markup
+
+    @check_key_id('Error message')
+    def announce_select(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Store the type of message to announce
+        context.user_data[keyID]['chat_id'] = data[2]
+        message, reply_markup = self.type_announce(update, context, keyID)
         # Extract chat id
-        chat_id = context.user_data[keyID]['chat_id']
-        chat = context.bot.getChat(chat_id)
         try:
-            query.edit_message_text(text=f"*Announce* {chat.title}:\n{message}", reply_markup=reply_markup, parse_mode='Markdown')
+            query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
         except TelegramError:
-            query.edit_message_text(text=f"Announce {chat.title}:\n{message}", reply_markup=reply_markup)
+            query.edit_message_text(text=message, reply_markup=reply_markup)
 
     def sendAnnounce(self, update, context, chat_id):
         query = update.callback_query

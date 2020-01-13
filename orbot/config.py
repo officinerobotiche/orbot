@@ -55,9 +55,20 @@ class Config:
         dp = self.updater.dispatcher
         # Configuration
         dp.add_handler(CommandHandler("config", self.config))
-        dp.add_handler(CallbackQueryHandler(self.config_save, pattern='CONF_SAVE'))
-        dp.add_handler(CallbackQueryHandler(self.config_cancel, pattern='CONF_CANCEL'))
-        dp.add_handler(CallbackQueryHandler(self.config_notify, pattern='CONF_NOTIFY'))
+        dp.add_handler(CallbackQueryHandler(self.config_save, pattern='C_SAVE'))
+        dp.add_handler(CallbackQueryHandler(self.config_cancel, pattern='C_CANCEL'))
+        dp.add_handler(CallbackQueryHandler(self.config_notify, pattern='C_NOTIFY'))
+        dp.add_handler(CallbackQueryHandler(self.config_def_channel, pattern='C_DEF_CHANNEL'))
+
+    def makeMessage(self, context):
+        message = ["Notifications " + ("🔊" if self.settings['config'].get('notify', True) else "🔇")]
+        def_ch = self.settings['config'].get('dch', None)
+        if def_ch is not None:
+            def_ch = context.bot.getChat(def_ch).title
+        else:
+            def_ch = "None"
+        message += ["Default channel: " + def_ch]
+        return message
 
     @filter_channel
     @rtype(['private'])
@@ -67,12 +78,13 @@ class Config:
         # Generate ID and seperate value from command
         keyID = str(uuid4())
         # Make buttons
-        buttons = [InlineKeyboardButton("Notifications " + ("🔊" if self.settings['config'].get('notify', True) else "🔇"),
-                                        callback_data=f"CONF_NOTIFY {keyID}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CONF_CANCEL {keyID}")))
-        message = f"Configuration\n"
-        for k, v in self.settings['config'].items():
-            message += f" - {k}={v}\n"
+        message = self.makeMessage(context)
+        buttons = [InlineKeyboardButton(message[0], callback_data=f"C_NOTIFY {keyID}"),
+                   InlineKeyboardButton(message[1], callback_data=f"C_DEF_CHANNEL {keyID}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"C_CANCEL {keyID}")))
+        message = f"Configuration"
+        # for k, v in self.settings['config'].items():
+        #    message += f"\n - {k}={v}"
         context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
         context.user_data[keyID] = {} 
@@ -84,23 +96,25 @@ class Config:
         # Extract keyID, chat_id and title
         keyID = data[1]
         # Add chat id in user data
-        message = f"Stored\n"
         for n in range(2, len(data)):
             var = data[n]
             name, value = var.split('=')
-            message += f" - {name}={value}\n"
             if value == "True":
                 value = True
             elif value == "False":
                 value = False
+            elif value == "None":
+                value = None
             self.settings['config'][name] = value
+        # Make the message
+        message = self.makeMessage(context)
         # remove key from user_data list
         del context.user_data[keyID]
         # Save to CSV file
         with open(self.settings_file, 'w') as fp:
             json.dump(self.settings, fp)
         # edit message
-        query.edit_message_text(text=message)
+        query.edit_message_text(text="<b>Stored!</b>\n" + "\n".join(message), parse_mode='HTML')
 
     @check_key_id('Error message')
     def config_cancel(self, update, context):
@@ -108,11 +122,11 @@ class Config:
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
-        message = f"Abort"
+        message = self.makeMessage(context)
         # remove key from user_data list
         del context.user_data[keyID]
         # edit message
-        query.edit_message_text(text=message)
+        query.edit_message_text(text="<b>Abort</b>\n" + "\n".join(message), parse_mode='HTML')
 
     @check_key_id('Error message')
     def config_notify(self, update, context):
@@ -122,11 +136,36 @@ class Config:
         keyID = data[1]
         # Make buttons
         buttons = [InlineKeyboardButton("🔊 Enable" + (" [X]" if self.settings['config'].get('notify', True) else ""),
-                                        callback_data=f"CONF_SAVE {keyID} notify=True"),
+                                        callback_data=f"C_SAVE {keyID} notify=True"),
                    InlineKeyboardButton("🔇 Disable" + ("" if self.settings['config'].get('notify', True) else " [X]"),
-                                        callback_data=f"CONF_SAVE {keyID} notify=False")]
+                                        callback_data=f"C_SAVE {keyID} notify=False")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
         message = f"🔈 Notifications"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+    
+    @check_key_id('Error message')
+    def config_def_channel(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # List of channels
+        buttons = []
+        def_ch = self.settings['config'].get('dch', None)
+        for chat_id in self.settings['channels']:
+            chat = context.bot.getChat(chat_id)
+            if chat.type == 'channel':
+                icons = self.channels.getIcons(context, chat_id)
+                isSelected = " [X]" if def_ch == chat_id else ""
+                buttons += [InlineKeyboardButton(icons + chat.title + isSelected,
+                                                  callback_data=f"C_SAVE {keyID} dch={chat_id}")]
+        # Footer button
+        footer_button = InlineKeyboardButton("None" + (" [X]" if def_ch is None else ""),
+                                             callback_data=f"C_SAVE {keyID} dch=None")
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1,
+                                            footer_buttons=footer_button))
+        message = f"Select the default channel:"
         # edit message
         query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
 # EOF
