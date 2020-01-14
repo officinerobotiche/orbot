@@ -107,6 +107,7 @@ class Channels:
         dp.add_handler(CallbackQueryHandler(self.ch_remove, pattern='CH_REMOVE'))
         dp.add_handler(CallbackQueryHandler(self.ch_notify, pattern='CH_NOTIFY'))
         dp.add_handler(CallbackQueryHandler(self.ch_link, pattern='CH_LINK'))
+        dp.add_handler(CallbackQueryHandler(self.ch_beta, pattern='CH_BETA'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
 
     def register_chat(self, update, context):
@@ -212,12 +213,14 @@ class Channels:
         chat = context.bot.getChat(chat_id)
         level = self.settings['channels'][chat_id].get('type', "0")
         admin = self.settings['channels'][chat_id].get('admin', False)
+        beta = self.settings['channels'][chat_id].get('beta', False)
         icons = []
         icons = icons + ['📢'] if chat.type == 'channel' else icons
         icon_type = Channels.TYPE[level].get('icon', '')
         if chat.type != 'channel':
             icons = icons + [icon_type] if icon_type else icons
         icons = icons + ['👑'] if admin else icons
+        icons = icons + ['🅱️'] if beta else icons
         if icons:
             return f"[" + ",".join(icons) + "] "
         return ""
@@ -289,6 +292,9 @@ class Channels:
                                         callback_data=f"CH_SAVE {keyID}"),
                    InlineKeyboardButton("🧹 Remove",
                                         callback_data=f"CH_REMOVE {keyID}")]
+        if chat.type != 'channel':
+            buttons += [InlineKeyboardButton(("✅" if context.user_data[keyID].get('beta', False) else "❌") + " 🅱️eta",
+                                             callback_data=f"CH_BETA {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         # Make message
         message = f"{chat.title}\n"
@@ -402,6 +408,22 @@ class Channels:
         query.edit_message_text(text=f"Set {chat.title} administrator?", reply_markup=reply_markup)
 
     @check_key_id('Error message')
+    def ch_beta(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
+        beta = context.user_data[keyID].get('beta', False)
+        buttons = [InlineKeyboardButton("✅ Yes " + ("[X]" if beta else ""),
+                                        callback_data=f"CH_EDIT {keyID} beta=True"),
+                    InlineKeyboardButton("❌ No " + ("" if beta else "[X]"),
+                                        callback_data=f"CH_EDIT {keyID} beta=False")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+        query.edit_message_text(text=f"Set {chat.title} beta?", reply_markup=reply_markup)
+
+    @check_key_id('Error message')
     def ch_save(self, update, context):
         query = update.callback_query
         data = query.data.split()
@@ -419,6 +441,12 @@ class Channels:
         if str(chat_id) not in self.settings['channels']:
             self.settings['channels'][str(chat_id)] = {}
             new_channel = True
+        # Notify if beta channel
+        if 'beta' in context.user_data[keyID]:
+            beta = context.user_data[keyID]['beta']
+            old_beta = self.settings['channels'][str(chat_id)].get('beta', False)
+            if beta and old_beta != beta:
+                context.bot.send_message(chat_id=chat_id, text="[🅱️] This channel now is beta enabled!")
         # Update all variables
         for k, v in context.user_data[keyID].items():
             if k != 'id':

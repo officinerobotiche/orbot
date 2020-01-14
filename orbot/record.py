@@ -40,6 +40,7 @@ from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+BETA = True
 START = 'start'
 STOP = 'stop'
 
@@ -76,6 +77,10 @@ class Record:
         if str(chat_id) not in self.settings['channels']:
             logger.info("Chat not authorized")
             return
+        # Enable only beta channels
+        if BETA:
+            if not self.settings['channels'][str(chat_id)].get('beta', False):
+                return
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
