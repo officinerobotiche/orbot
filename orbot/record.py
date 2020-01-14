@@ -115,17 +115,17 @@ class Record:
         if start:
             # Make buttons
             message = "📼 Do you want *record* this chat? 📼"
-            yes = InlineKeyboardButton("✅", callback_data=f"REC_START {keyID} true")
-            no = InlineKeyboardButton("❌", callback_data=f"REC_START {keyID} false")
-            reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
-            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+            self.ctrl_buttons(update, context, keyID, 'REC_START', message)
         if stop:
             # Make buttons
             message = "🚫 Do you want *stop* now? 🚫"
-            yes = InlineKeyboardButton("✅", callback_data=f"REC_STOP {keyID} true")
-            no = InlineKeyboardButton("❌", callback_data=f"REC_STOP {keyID} false")
-            reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
-            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)            
+            self.ctrl_buttons(update, context, keyID, 'REC_STOP', message)
+
+    def ctrl_buttons(self, update, context, keyID, type_cb, message):
+        yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
+        no = InlineKeyboardButton("❌", callback_data=f"{type_cb} {keyID} false")
+        reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
+        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def start(self, update, context):
