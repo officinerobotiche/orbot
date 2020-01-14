@@ -45,6 +45,7 @@ from .channels import Channels
 from .config import Config
 from .announce import Announce
 from .sites import Sites
+from .record import Record
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -94,6 +95,8 @@ class ORbot:
         self.announce = Announce(self.updater, self.settings, self.settings_file, self.channels)
         # Sites manager
         self.sites = Sites(self.updater, self.settings, self.settings_file, self.channels)
+        # Record manager
+        self.record = Record(self.updater, self.settings, self.settings_file, self.channels)
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Add commands
