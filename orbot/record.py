@@ -31,7 +31,13 @@
 
 import re
 from uuid import uuid4
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
+from telegram.ext import (Updater,
+                          CommandHandler,
+                          CallbackQueryHandler,
+                          MessageHandler,
+                          Filters,
+                          CallbackContext,
+                          ConversationHandler)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
 # Menu 
@@ -53,6 +59,8 @@ class Record:
         self.channels = channels
         # Recording status
         self.recording = {}
+        # Job queue
+        self.job = self.updater.job_queue
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Text recorder
@@ -61,6 +69,7 @@ class Record:
         # Query messages
         dp.add_handler(CallbackQueryHandler(self.start, pattern='REC_START'))
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
+        dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
 
     def record(self, update, context):
         #if update.edit_message is not None:
@@ -81,6 +90,9 @@ class Record:
         if BETA:
             if not self.settings['channels'][str(chat_id)].get('beta', False):
                 return
+        # initialization recording chat
+        if chat_id not in self.recording:
+            self.recording[chat_id] = {}
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -94,6 +106,16 @@ class Record:
         username = update.message.from_user.username
         # Name
         firstname = update.message.from_user.first_name
+        # Make message
+        msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id}
+        # Add message in queue text
+        self.recording[chat_id]['msg'] = msg
+        # 
+        if 'job' in self.recording[chat_id]:
+            job = self.recording[chat_id]['job']
+            print(job)
+            message = job.interval_seconds
+            context.bot.send_message(chat_id=chat_id, text=message)
         # https://python-telegram-bot.readthedocs.io/en/latest/telegram.messageentity.html
         # entities = update.message.parse_entities()
         # Extract all hashtags
@@ -106,26 +128,36 @@ class Record:
             logger.info("Start and stop togheter, skip control record")
             return
         # Message to store (sample)
-        print(f"{date} - {username} - {text}")
+        print(f"{date} - {username} - {firstname} - {text}")
         # Generate ID and seperate value from command
         keyID = str(uuid4())
         # Initialize recording
-        context.user_data[keyID] = {}
+        chat_id = update.effective_chat.id
+        context.user_data[keyID] = {'chat_id': chat_id}
         # If start is only in this text start to record
         if start:
             # Make buttons
             message = "📼 Do you want *record* this chat? 📼"
-            self.ctrl_buttons(update, context, keyID, 'REC_START', message)
+            self.ctrl_buttons(context, chat_id, keyID, 'REC_START', message)
         if stop:
             # Make buttons
             message = "🚫 Do you want *stop* now? 🚫"
-            self.ctrl_buttons(update, context, keyID, 'REC_STOP', message)
+            self.ctrl_buttons(context, chat_id, keyID, 'REC_STOP', message)
 
-    def ctrl_buttons(self, update, context, keyID, type_cb, message):
+    def ctrl_buttons(self, context, chat_id, keyID, type_cb, message):
         yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
         no = InlineKeyboardButton("❌", callback_data=f"{type_cb} {keyID} false")
         reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+        context.bot.send_message(chat_id=chat_id,
+                                 text=message,
+                                 parse_mode='Markdown',
+                                 reply_markup=reply_markup)
+
+    def timer_stop(self, context: CallbackContext):
+        # Extract chat ids
+        chat_id = context.job.context
+        message = "🚫 Do you want *stop* now? 🚫 - timer"
+        self.ctrl_buttons(context, chat_id, chat_id, 'REC_TIMER_STOP', message)
 
     @check_key_id('Error message')
     def start(self, update, context):
@@ -136,14 +168,18 @@ class Record:
         # Extract status record
         status = True if data[2] == 'true' else False
         if status:
+            chat_id = context.user_data[keyID]['chat_id']
+            # add job in recording dictionary
+            self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, 5, context=chat_id)
+            # Message to send
             message = f"📼 *Recording*..."
             query.edit_message_text(text=message, parse_mode='Markdown')
         else:
-            # remove key from user_data list
-            del context.user_data[keyID]
             # Send the message
             message = f"Ok next time!"
             query.edit_message_text(text=message, parse_mode='Markdown')
+        # remove key from user_data list
+        del context.user_data[keyID]
 
     @check_key_id('Error message')
     def stop(self, update, context):
@@ -151,14 +187,31 @@ class Record:
         data = query.data.split()
         # Extract keyID
         keyID = data[1]
+        chat_id = context.user_data[keyID]['chat_id']
+        # Run callback stop
+        self.cb_stop(update, context, chat_id)
+        # remove key from user_data list
+        del context.user_data[keyID]
+
+    def timer_stop_cb(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        chat_id = int(data[1])
+        # Run callback stop
+        self.cb_stop(update, context, chat_id)
+
+    def cb_stop(self, update, context, chat_id):
+        query = update.callback_query
+        data = query.data.split()
         # Extract status record
         status = True if data[2] == 'true' else False
         if status:
+            # Stop the timer
+            self.recording[chat_id]['job'].enabled = False  # Temporarily disable this job
+            self.recording[chat_id]['job'].schedule_removal()  # Remove this job completely
             message = f"🛑 Recording *stop*!"
             query.edit_message_text(text=message, parse_mode='Markdown')
         else:
-            # remove key from user_data list
-            del context.user_data[keyID]
             # Send the message
             message = f"📼 *Recording*..."
             query.edit_message_text(text=message, parse_mode='Markdown')
