@@ -114,11 +114,11 @@ class ORbot:
         # Send a message to all admins when the system is started
         version = get_version()
         # Run the bot and send a welcome message
-        bot = Bot(token=telegram['token'])
-        infobot = bot.get_me()
+        self.bot = Bot(token=telegram['token'])
+        infobot = self.bot.get_me()
         logger.info(f"Bot: {infobot}")
         for user_chat_id in self.LIST_OF_ADMINS:
-            bot.send_message(chat_id=user_chat_id, text=f"🤖 Bot started! v{version}")
+            self.bot.send_message(chat_id=user_chat_id, text=f"🤖 *{infobot.first_name}* (v{version}) started!", parse_mode='Markdown')
 
     def runner(self):
         # Start the Bot
@@ -127,6 +127,12 @@ class ORbot:
         # SIGTERM or SIGABRT. This should be used most of the time, since
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
+        # Send a switch off message
+        infobot = self.bot.get_me()
+        for user_chat_id in self.LIST_OF_ADMINS:
+            self.bot.send_message(chat_id=user_chat_id, text=f"💤 Switch off *{infobot.first_name}*", parse_mode='Markdown')
+
+
 
     @register
     @filter_channel
@@ -146,8 +152,9 @@ class ORbot:
     @rtype(['private'])
     @restricted
     def restart(self, update, context):
+        infobot = self.bot.get_me()
         for user_chat_id in self.LIST_OF_ADMINS:
-            context.bot.send_message(chat_id=user_chat_id, text='Bot is restarting...')
+            context.bot.send_message(chat_id=user_chat_id, text=f'⚙️ *{infobot.first_name}* is restarting...', parse_mode='Markdown')
         Thread(target=self.stop_and_restart).start()
 
     @register
