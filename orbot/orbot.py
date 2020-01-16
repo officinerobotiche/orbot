@@ -181,14 +181,14 @@ class ORbot:
         if 'private' in self.channels.isAllowed(update, context):
             if not self.channels.isRestricted(update, context):
                 message += "<b>Admin commands:</b>\n"
-                message += " - /start your bot \n"
-                message += " - /announce a message \n"
                 message += " - /settings channels \n"
                 message += " - Configuration /sites \n"
                 message += " - /config bot \n"
                 message += " - /restart this bot \n"
             message += "All commands available in this bot are show below \n"
         # Print all commands availables
+        message += " - /start your bot \n"
+        message += " - /announce a message in a channel [only channel admin] \n"
         message += " - /info about OR \n"
         message += " - All /channels available \n"
         message += " - This /help \n"

@@ -158,7 +158,8 @@ class Announce:
         chat = context.bot.getChat(chat_id)
         #Send message
         msg = self.sendAnnounce(update, context, chat_id)
-        context.bot.forward_message(chat_id=main_chat, from_chat_id=chat_id, message_id=msg.message_id)
+        context.bot.forward_message(chat_id=update.effective_user.id, from_chat_id=chat_id, message_id=msg.message_id)
+        logger.info(f"Announce message on {chat.title}")
         # Check forward in all chats
         all = False
         if len(data) > 2:
