@@ -50,6 +50,77 @@ BETA = True
 START = 'start'
 STOP = 'stop'
 
+class Autoreply:
+
+    def __init__(self, updater, context, chat_id, type, text, text_timeout, time=60, interval=10, keyID=None):
+        # Usually th e keyID is automatically generated.
+        # Do not use a keyID in a job timer message
+        if keyID is None:
+            # Generate ID and seperate value from command
+            keyID = str(uuid4())
+            # Set the user data
+            context.user_data[keyID] = {'chat_id': chat_id}
+        # set total time
+        self.time = time
+        # Interval update message
+        self.interval = interval
+        # Make control buttons
+        msg = self.ctrl_buttons(context, chat_id, keyID, type, text)
+        # Initialize the context to share
+        data_timer = {'timer': self.time,
+                      'message': msg.message_id,
+                      'chat_id': chat_id,
+                      'keyID': keyID,
+                      'text': text,
+                      'text_timeout': text_timeout,
+                      'type_cb': type}
+        # add job in recording dictionary
+        self.job = updater.job_queue.run_repeating(self.timer_autoreply, context=data_timer, interval=self.interval, first=self.interval)
+
+    def stop(self):
+        # Stop the autoreply timer
+        self.job.enabled = False  # Temporarily disable this job
+        self.job.schedule_removal()  # Remove this job completely
+
+    def timer_autoreply(self, context: CallbackContext):
+        # Get job data
+        job = context.job
+        data_timer = context.job.context
+        # Extract all context parameter
+        timer = data_timer['timer']
+        message = data_timer['message']
+        chat_id = data_timer['chat_id']
+        keyID = data_timer['keyID']
+        text = data_timer['text']
+        type_cb = data_timer['type_cb']
+        # Update control buttons and text
+        self.ctrl_buttons(context, chat_id, keyID, type_cb, f"{text} _({timer}s left)_", message)
+        # Decrease timer
+        context.job.context['timer'] -= self.interval
+        # If timer left remove timer and send a message
+        if timer <= 0:
+            job.schedule_removal()
+            # Send the message
+            text = data_timer['text_timeout']
+            context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message, parse_mode='Markdown')
+
+    def ctrl_buttons(self, context, chat_id, keyID, type_cb, message, edit_msg=None):
+        yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
+        no = InlineKeyboardButton("❌", callback_data=f"{type_cb} {keyID} false")
+        reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
+        if edit_msg is not None:
+            context.bot.edit_message_text(chat_id=chat_id,
+                                          message_id=edit_msg,
+                                          text=message,
+                                          parse_mode='Markdown',
+                                          reply_markup=reply_markup)
+            return None
+        else:
+            return context.bot.send_message(chat_id=chat_id,
+                                           text=message,
+                                           parse_mode='Markdown',
+                                           reply_markup=reply_markup)
+
 class Record:
 
     def __init__(self, updater, settings, settings_file, channels):
@@ -70,6 +141,28 @@ class Record:
         dp.add_handler(CallbackQueryHandler(self.start, pattern='REC_START'))
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
+
+    def job_timer_reset(self, chat_id):
+        # Stop the timer
+        self.job_timer_stop(chat_id)
+        # Start timer
+        self.job_timer_start(chat_id)
+
+    def job_timer_start(self, chat_id):
+        # add job in recording dictionary
+        self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, 5, context=chat_id)
+
+    def job_timer_stop(self, chat_id):
+        if 'job' in self.recording[chat_id]:
+            job = self.recording[chat_id]['job']
+            # Stop the timer
+            job.enabled = False  # Temporarily disable this job
+            job.schedule_removal()  # Remove this job completely
+
+    def job_timer_delete(self, chat_id):
+        if 'job' in self.recording[chat_id]:
+            # Remove timer
+            del self.recording[chat_id]['job']
 
     def record(self, update, context):
         #if update.edit_message is not None:
@@ -92,7 +185,7 @@ class Record:
                 return
         # initialization recording chat
         if chat_id not in self.recording:
-            self.recording[chat_id] = {}
+            self.recording[chat_id] = {'status': 'idle'}
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -110,12 +203,10 @@ class Record:
         msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id}
         # Add message in queue text
         self.recording[chat_id]['msg'] = msg
-        # 
+        # restart timer only if is active
         if 'job' in self.recording[chat_id]:
-            job = self.recording[chat_id]['job']
-            print(job)
-            message = job.interval_seconds
-            context.bot.send_message(chat_id=chat_id, text=message)
+            # restart timer
+            self.job_timer_reset(chat_id)
         # https://python-telegram-bot.readthedocs.io/en/latest/telegram.messageentity.html
         # entities = update.message.parse_entities()
         # Extract all hashtags
@@ -129,35 +220,25 @@ class Record:
             return
         # Message to store (sample)
         print(f"{date} - {username} - {firstname} - {text}")
-        # Generate ID and seperate value from command
-        keyID = str(uuid4())
         # Initialize recording
         chat_id = update.effective_chat.id
-        context.user_data[keyID] = {'chat_id': chat_id}
+        text_timeout = f"Ok next time!"
         # If start is only in this text start to record
         if start:
             # Make buttons
-            message = "📼 Do you want *record* this chat? 📼"
-            self.ctrl_buttons(context, chat_id, keyID, 'REC_START', message)
+            text = "📼 Do you want *record* this chat? 📼"
+            self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, text_timeout)
         if stop:
             # Make buttons
-            message = "🚫 Do you want *stop* now? 🚫"
-            self.ctrl_buttons(context, chat_id, keyID, 'REC_STOP', message)
-
-    def ctrl_buttons(self, context, chat_id, keyID, type_cb, message):
-        yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
-        no = InlineKeyboardButton("❌", callback_data=f"{type_cb} {keyID} false")
-        reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
-        context.bot.send_message(chat_id=chat_id,
-                                 text=message,
-                                 parse_mode='Markdown',
-                                 reply_markup=reply_markup)
+            text = "🚫 Do you want *stop* now? 🚫"
+            self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, text_timeout)
 
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids
         chat_id = context.job.context
-        message = "🚫 Do you want *stop* now? 🚫 - timer"
-        self.ctrl_buttons(context, chat_id, chat_id, 'REC_TIMER_STOP', message)
+        text = "🚫 Do you want *stop* now? 🚫"
+        text_timeout = f"Ok next time!"
+        self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, text_timeout, keyID=chat_id)
 
     @check_key_id('Error message')
     def start(self, update, context):
@@ -165,12 +246,14 @@ class Record:
         data = query.data.split()
         # Extract keyID
         keyID = data[1]
+        chat_id = context.user_data[keyID]['chat_id']
+        # Stop the autoreply timer
+        self.recording[chat_id]['job_autoreply'].stop()
         # Extract status record
         status = True if data[2] == 'true' else False
         if status:
-            chat_id = context.user_data[keyID]['chat_id']
-            # add job in recording dictionary
-            self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, 5, context=chat_id)
+            # Start timer
+            self.job_timer_start(chat_id)
             # Message to send
             message = f"📼 *Recording*..."
             query.edit_message_text(text=message, parse_mode='Markdown')
@@ -203,15 +286,20 @@ class Record:
     def cb_stop(self, update, context, chat_id):
         query = update.callback_query
         data = query.data.split()
+        # Stop the autoreply timer
+        self.recording[chat_id]['job_autoreply'].stop()
         # Extract status record
         status = True if data[2] == 'true' else False
         if status:
-            # Stop the timer
-            self.recording[chat_id]['job'].enabled = False  # Temporarily disable this job
-            self.recording[chat_id]['job'].schedule_removal()  # Remove this job completely
+            # Remove and stop the timer
+            self.job_timer_stop(chat_id)
+            self.job_timer_delete(chat_id)
+            # Send message
             message = f"🛑 Recording *stop*!"
             query.edit_message_text(text=message, parse_mode='Markdown')
         else:
+            # Start timer
+            self.job_timer_reset(chat_id)
             # Send the message
             message = f"📼 *Recording*..."
             query.edit_message_text(text=message, parse_mode='Markdown')
