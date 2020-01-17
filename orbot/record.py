@@ -121,6 +121,8 @@ class Autoreply:
                                            parse_mode='Markdown',
                                            reply_markup=reply_markup)
 
+IDLE, WAIT_START, WAIT_STOP, WRITING = range(4)
+
 class Record:
 
     def __init__(self, updater, settings, settings_file, channels):
@@ -128,6 +130,8 @@ class Record:
         self.settings_file = settings_file
         self.settings = settings
         self.channels = channels
+        # Timeout autostop
+        self.timeout = 5
         # Recording status
         self.recording = {}
         # Job queue
@@ -150,7 +154,7 @@ class Record:
 
     def job_timer_start(self, chat_id):
         # add job in recording dictionary
-        self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, 5, context=chat_id)
+        self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, self.timeout, context=chat_id)
 
     def job_timer_stop(self, chat_id):
         if 'job' in self.recording[chat_id]:
@@ -185,7 +189,7 @@ class Record:
                 return
         # initialization recording chat
         if chat_id not in self.recording:
-            self.recording[chat_id] = {'status': 'idle'}
+            self.recording[chat_id] = {'status': IDLE}
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -199,10 +203,14 @@ class Record:
         username = update.message.from_user.username
         # Name
         firstname = update.message.from_user.first_name
-        # Make message
-        msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id}
-        # Add message in queue text
-        self.recording[chat_id]['msg'] = msg
+
+        if self.recording[chat_id]['status'] == WRITING:
+            # Make message
+            msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id}
+            # Add message in queue text
+            self.recording[chat_id]['msg'] = msg
+            # Message to store (sample)
+            print(f"{date} - {username} - {firstname} - {text}")
         # restart timer only if is active
         if 'job' in self.recording[chat_id]:
             # restart timer
@@ -214,31 +222,43 @@ class Record:
         # check if there is the start hashtag
         start = True if START in hashtags else False
         stop = True if STOP in hashtags else False
-        # Skip start and stop togheter
-        if start and stop:
-            logger.info("Start and stop togheter, skip control record")
-            return
-        # Message to store (sample)
-        print(f"{date} - {username} - {firstname} - {text}")
         # Initialize recording
         chat_id = update.effective_chat.id
         text_timeout = f"Ok next time!"
         # If start is only in this text start to record
-        if start:
-            # Make buttons
+        if start and self.recording[chat_id]['status'] == IDLE:
+            # Wait reply
+            self.recording[chat_id]['status'] = WAIT_START
+            # Send message
             text = "📼 Do you want *record* this chat? 📼"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, text_timeout)
-        if stop:
-            # Make buttons
+        elif stop and self.recording[chat_id]['status'] not in [IDLE, WAIT_START, WAIT_STOP]:
+            # Remove and stop the timer
+            self.job_timer_stop(chat_id)
+            self.job_timer_delete(chat_id)
+            # Send message
             text = "🚫 Do you want *stop* now? 🚫"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, text_timeout)
+
+    def writing(self, chat_id):
+        self.recording[chat_id]['status'] = WRITING
+        # log status
+        logger.info(f"Chat {chat_id} in WRITING")
+
+    def idle(self, chat_id):
+        self.recording[chat_id]['status'] = IDLE
+        # log status
+        logger.info(f"Chat {chat_id} in IDLE")
 
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids
         chat_id = context.job.context
-        text = "🚫 Do you want *stop* now? 🚫"
+        # Wait reply
+        self.recording[chat_id]['status'] = WAIT_STOP
+        # Send message
+        text = "🚫 Do you want *stop* now? 🚫 - timer"
         text_timeout = f"Ok next time!"
-        self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, text_timeout, keyID=chat_id)
+        self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_TIMER_STOP', text, text_timeout, keyID=chat_id)
 
     @check_key_id('Error message')
     def start(self, update, context):
@@ -252,6 +272,8 @@ class Record:
         # Extract status record
         status = True if data[2] == 'true' else False
         if status:
+            # Start write mode
+            self.writing(chat_id)
             # Start timer
             self.job_timer_start(chat_id)
             # Message to send
@@ -294,6 +316,8 @@ class Record:
             # Remove and stop the timer
             self.job_timer_stop(chat_id)
             self.job_timer_delete(chat_id)
+            # Set in idle mode and wait a new record
+            self.idle(chat_id)
             # Send message
             message = f"🛑 Recording *stop*!"
             query.edit_message_text(text=message, parse_mode='Markdown')
