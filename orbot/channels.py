@@ -32,8 +32,11 @@ import json
 from uuid import uuid4
 import logging
 from functools import wraps
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, ConversationHandler, InlineQueryHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
+from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageContent, InlineQueryResultCachedPhoto, InlineQueryResultPhoto
+from telegram.utils.helpers import escape_markdown
+
 # Menu 
 from .utils import build_menu, check_key_id, isAdmin, filter_channel
 
@@ -109,6 +112,8 @@ class Channels:
         dp.add_handler(CallbackQueryHandler(self.ch_link, pattern='CH_LINK'))
         dp.add_handler(CallbackQueryHandler(self.ch_beta, pattern='CH_BETA'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
+        # on noncommand i.e message - echo the message on Telegram
+        dp.add_handler(InlineQueryHandler(self.inlinequery))
 
     def register_chat(self, update, context):
         type_chat = update.effective_chat.type
@@ -170,6 +175,50 @@ class Channels:
             except TelegramError:
                 pass
         return level
+
+    def inlinequery(self, update, context):
+        """Handle the inline query."""
+        query = update.inline_query.query
+        # extract level user
+        local_chat_id = str(update.effective_user.id)
+        local_level = self.getLevel(context, local_chat_id)
+        # If there is a query filter the channels
+        if query:
+            filtered_dict = {k:v for (k,v) in self.settings['channels'].items() if query.lower() in context.bot.getChat(k).title.lower()}
+        else:
+            filtered_dict = self.settings['channels']
+        # Make articles list
+        articles = []
+        for chat_id in filtered_dict:
+            chat = context.bot.getChat(chat_id)
+            link = chat.invite_link
+            level = int(self.settings['channels'][chat_id].get('type', "0"))
+            # Update link
+            if isAdmin(update, context, context.bot.username, chat_id=chat_id):
+                # If None generate a link
+                if link is None:
+                    link = context.bot.exportChatInviteLink(chat_id)
+            # Show only enable channels
+            if local_level <= level and link is not None:
+                # Load icon type channel
+                icon_string = self.getIcons(context, chat_id)
+                # Check if this group can see other group with same level
+                button = [InlineKeyboardButton(icon_string + chat.title, url=link)]
+                # Does not work !!!
+                #if chat.photo:
+                #    file_id = chat.photo.small_file_id
+                #    # newFile = context.bot.getFile(file_id)
+                #    articles += [InlineQueryResultCachedPhoto(id=uuid4(), title=chat.title, photo_file_id=file_id)]
+                text = f"*{chat.title}*"
+                if chat.description:
+                    text += f"\n{chat.description}"
+                articles += [InlineQueryResultArticle(id=uuid4(), title=chat.title,
+                                                    input_message_content=InputTextMessageContent(text, parse_mode='Markdown'),
+                                                    url=link,
+                                                    description=chat.description,
+                                                    reply_markup=InlineKeyboardMarkup(build_menu(button, 1)))]
+        # Update inline query
+        update.inline_query.answer(articles)
 
     def getChannels(self, update, context):
         buttons = []
