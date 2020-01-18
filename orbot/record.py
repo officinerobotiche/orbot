@@ -42,6 +42,7 @@ from telegram.ext import (Updater,
                           ConversationHandler)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
+from datetime import datetime, timedelta
 # Menu 
 from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype
 
@@ -137,6 +138,8 @@ class Record:
         # Timeout autostop
         self.timeout = 10 * 60
         self.extension = "csv"
+        self.size_record_chat = 10
+        self.min_delta = 10
         # Recording status
         self.recording = {}
         # Initialize folder records
@@ -307,7 +310,7 @@ class Record:
                 return
         # initialization recording chat
         if chat_id not in self.recording:
-            self.recording[chat_id] = {'status': IDLE, 'msgs': deque(maxlen=5)}
+            self.recording[chat_id] = {'status': IDLE, 'msgs': deque(maxlen=self.size_record_chat)}
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -358,6 +361,31 @@ class Record:
             # Send message
             text = "🚫 Do you want *stop* now? 🚫"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, self.cb_stop, 'true')
+        # Auto record start
+        self.auto_start(context, chat_id)
+
+    def auto_start(self, context, chat_id):
+        # Minimum number of messages recordered
+        min_messages = self.size_record_chat
+        rush_messages = False
+        if len(self.recording[chat_id]['msgs']) >= min_messages:
+            # Get first and last message
+            first = self.recording[chat_id]['msgs'][0]
+            last = self.recording[chat_id]['msgs'][-1]
+            # print(f"First: {first['date']} - {first['text']} -- Last: {last['date']} - {last['text']}")
+            # Measure delta from last and first message
+            delta = last['date'] - first['date']
+            # print(f"Delta: {delta}")
+            # If delta is minus or equal the minimum time enable rush_messages
+            if delta <= timedelta(minutes=self.min_delta):
+                rush_messages = True
+        # Run Autostart
+        if rush_messages and self.recording[chat_id]['status'] == IDLE:
+            # Wait reply
+            self.recording[chat_id]['status'] = WAIT_START
+            # Send message
+            text = "🔥 This chat getting *hot* 🔥\n📼 Do you want *record* this chat? 📼"
+            self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, self.cb_start, 'false')
 
     def writing(self, context, chat_id, msg):
         folder_name = str(chat_id)
