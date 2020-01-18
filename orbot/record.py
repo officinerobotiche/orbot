@@ -136,7 +136,7 @@ class Record:
         self.channels = channels
         # Timeout autostop
         self.timeout = 5
-        self.extension = "txt"
+        self.extension = "csv"
         # Recording status
         self.recording = {}
         # Initialize folder records
@@ -165,7 +165,7 @@ class Record:
         # List all folders
         for folder in os.listdir(self.records_folder):
             user_chat = context.bot.get_chat_member(folder, user_id)
-            if user_chat.status not in ['left', 'kicked']:
+            if user_chat.status not in ['left', 'kicked'] and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
                 chat = context.bot.getChat(folder)
                 buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
@@ -174,7 +174,7 @@ class Record:
         return message, reply_markup
 
     def get_records_list(self, context, keyID, folder_chat):
-        context.user_data[keyID]['folder'] = os.listdir(f"{self.records_folder}/{folder_chat}")
+        context.user_data[keyID]['folder'] = sorted(os.listdir(f"{self.records_folder}/{folder_chat}"))
         buttons = []
         for idx, rec in enumerate(context.user_data[keyID]['folder']):
             filename, _ = os.path.splitext(rec)
@@ -364,7 +364,7 @@ class Record:
         file_name = self.recording[chat_id]['file_name']
         # Append new line on file
         with open(f"{self.records_folder}/{folder_name}/{file_name}", "a") as f:
-                f.write(msg['text'] + "\n")
+                f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
 
@@ -382,8 +382,9 @@ class Record:
         # "a" - Append - will create a file if the specified file does not exist
         # "w" - Write - will create a file if the specified file does not exist
         with open(f"{self.records_folder}/{folder_name}/{file_name}", "x") as f:
+            f.write(f"date,firstname,user_id,text\n")
             for msg in self.recording[chat_id]['msgs']:
-                f.write(msg['text'] + "\n")
+                f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING")
 
