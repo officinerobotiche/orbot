@@ -160,19 +160,8 @@ class Record:
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
 
-
-    @rtype(['private', 'channel'])
-    def records(self, update, context):
-        chat_id = update.effective_chat.id
-        user_id = update.effective_user.id
-        # Generate ID and seperate value from command
-        keyID = str(uuid4())
-        # Check user type
-        if update.message.chat.type == 'private':
-            logger.info("Private chat")
+    def get_folders(self, context, user_id, keyID):
         buttons = []
-        # Store value
-        context.user_data[keyID] = {}
         # List all folders
         for folder in os.listdir(self.records_folder):
             user_chat = context.bot.get_chat_member(folder, user_id)
@@ -180,9 +169,39 @@ class Record:
                 chat = context.bot.getChat(folder)
                 buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
         message = 'List of records:' if buttons else 'No records'
-        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        return message, reply_markup
+
+    def get_records_list(self, context, keyID, folder_chat):
+        context.user_data[keyID]['folder'] = os.listdir(f"{self.records_folder}/{folder_chat}")
+        buttons = []
+        for idx, rec in enumerate(context.user_data[keyID]['folder']):
+            filename, _ = os.path.splitext(rec)
+            buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
+        # Build reply markup
+        chat = context.bot.getChat(folder_chat)
+        message = f"📼 *Records* _from_ {chat.title}" if buttons else "No records!"
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        return message, reply_markup
+
+    @rtype(['private', 'channel'])
+    def records(self, update, context):
+        chat_id = update.effective_chat.id
+        user_id = update.effective_user.id
+        # Generate ID and seperate value from command
+        keyID = str(uuid4())
+        # Store value
+        context.user_data[keyID] = {}
+        # Check user type
+        if update.message.chat.type == 'private':
+            # List of all folders
+            message, reply_markup = self.get_folders(context, user_id, keyID)
+        else:
+            context.user_data[keyID]['folder_name'] = str(chat_id)
+            message, reply_markup = self.get_records_list(context, keyID, str(chat_id))
+        # Send message
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def rec_folder(self, update, context):
@@ -192,15 +211,9 @@ class Record:
         keyID = data[1]
         folder_chat = data[2]
         context.user_data[keyID]['folder_name'] = folder_chat
-        context.user_data[keyID]['folder'] = os.listdir(f"{self.records_folder}/{folder_chat}")
-        buttons = []
-        for idx, rec in enumerate(context.user_data[keyID]['folder']):
-            filename, _ = os.path.splitext(rec)
-            buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
-        # Build reply markup
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
-        message = "Records"
-        query.edit_message_text(text=message, reply_markup=reply_markup)
+        # Make list of records
+        message, reply_markup = self.get_records_list(context, keyID, folder_chat)
+        query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
 
     @check_key_id('Error message')
     def rec_download(self, update, context):
@@ -223,12 +236,11 @@ class Record:
                        InlineKeyboardButton("🧹 Remove", callback_data=f"REC_DOWNLOAD {keyID} {folder_idx} delete")]
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
             text = f"📼 {filename} _from_ {chat.title}"
-            query.edit_message_text(text=text, reply_markup=reply_markup)
+            query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode='Markdown')
         else:
             if option == 'download':
-                # Write text information
-                text = f"*Downloading* 📼 {filename} _from_ {chat.title}"
-                query.edit_message_text(text=text, parse_mode='Markdown')
+                #query.edit_message_text(text=text, parse_mode='Markdown')
+                context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
                 # Sending file
                 context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
             elif option == 'delete':
