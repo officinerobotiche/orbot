@@ -28,6 +28,7 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
 import logging
 import csv
 from os import path
@@ -39,6 +40,12 @@ OFFSET = 127462 - ord('A')
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def save_config(file_name, settings):
+    # Save to CSV file
+    with open(file_name, 'w') as fp:
+        json.dump(settings, fp, indent=4, sort_keys=True)
 
 
 def restricted(func):

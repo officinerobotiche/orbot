@@ -35,16 +35,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramEr
 import logging
 import json
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, save_config
 from .channels import Channels
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def save_config(file_name, settings):
-    # Save to CSV file
-    with open(file_name, 'w') as fp:
-        json.dump(settings, fp, indent=4, sort_keys=True)
 
 
 class Config:

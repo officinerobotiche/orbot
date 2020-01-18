@@ -38,7 +38,7 @@ from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageConten
 from telegram.utils.helpers import escape_markdown
 
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, save_config
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -515,8 +515,7 @@ class Channels:
             # Remove from groups list
             self.groups.remove(int(chat_id))
         # Save to CSV file
-        with open(self.settings_file, 'w') as fp:
-            json.dump(self.settings, fp)
+        save_config(self.settings_file, self.settings)
         # Make message
         message = f"{chat.title} STORED!\n"
         for k, v in context.user_data[keyID].items():

@@ -35,7 +35,7 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, register,rtype
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, register, rtype, save_config
 
 # Reference
 # https://stackoverflow.com/questions/7160737/python-how-to-validate-a-url-in-python-malformed-or-not
@@ -225,8 +225,7 @@ class Sites:
         # Remove from list
         del self.settings['sites'][title]
         # Save to CSV file
-        with open(self.settings_file, 'w') as fp:
-            json.dump(self.settings, fp)
+        save_config(self.settings_file, self.settings)
         # remove key from user_data list
         del context.user_data[keyID]
         # edit message

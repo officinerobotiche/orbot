@@ -30,7 +30,7 @@
 
 
 import re
-from uuid import uuid4
+from uuid import uuid1, uuid4
 from collections import deque
 import os
 from telegram.ext import (Updater,
@@ -54,7 +54,7 @@ STOP = 'stop'
 
 class Autoreply:
 
-    def __init__(self, updater, context, chat_id, type, text, func_timeout, data, time=10, interval=5, keyID=None):
+    def __init__(self, updater, context, chat_id, type, text, func_timeout, data, time=60, interval=10, keyID=None):
         # Usually th e keyID is automatically generated.
         # Do not use a keyID in a job timer message
         if keyID is None:
@@ -136,6 +136,7 @@ class Record:
         self.channels = channels
         # Timeout autostop
         self.timeout = 5
+        self.extension = "txt"
         # Recording status
         self.recording = {}
         # Initialize folder records
@@ -151,9 +152,88 @@ class Record:
         summarize_handler = MessageHandler(Filters.text, self.record)
         dp.add_handler(summarize_handler)
         # Query messages
+        dp.add_handler(CommandHandler('records', self.records))
+        dp.add_handler(CallbackQueryHandler(self.rec_folder, pattern='REC_DATA'))
+        dp.add_handler(CallbackQueryHandler(self.rec_download, pattern='REC_DOWNLOAD'))
+        dp.add_handler(CallbackQueryHandler(self.rec_cancel, pattern='REC_CN'))
         dp.add_handler(CallbackQueryHandler(self.start, pattern='REC_START'))
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
+
+
+    @rtype(['private', 'channel'])
+    def records(self, update, context):
+        chat_id = update.effective_chat.id
+        user_id = update.effective_user.id
+        # Generate ID and seperate value from command
+        keyID = str(uuid4())
+        # Check user type
+        if update.message.chat.type == 'private':
+            logger.info("Private chat")
+        buttons = []
+        # Store value
+        context.user_data[keyID] = {}
+        # List all folders
+        for folder in os.listdir(self.records_folder):
+            user_chat = context.bot.get_chat_member(folder, user_id)
+            if user_chat.status not in ['left', 'kicked']:
+                chat = context.bot.getChat(folder)
+                buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
+        # Build reply markup
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        message = 'List of records:' if buttons else 'No records'
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def rec_folder(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        folder_chat = data[2]
+        context.user_data[keyID]['folder_name'] = folder_chat
+        context.user_data[keyID]['folder'] = os.listdir(f"{self.records_folder}/{folder_chat}")
+        buttons = []
+        for idx, rec in enumerate(context.user_data[keyID]['folder']):
+            filename, _ = os.path.splitext(rec)
+            buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
+        # Build reply markup
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        message = "Records"
+        query.edit_message_text(text=message, reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def rec_download(self, update, context):
+        query = update.callback_query
+        chat_id = query.message.chat.id
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        folder_idx = data[2]
+        folder_chat = context.user_data[keyID]['folder_name']
+        file_download = context.user_data[keyID]['folder'][int(folder_idx)]
+        document = f"{self.records_folder}/{folder_chat}/{file_download}"
+        # Write text information
+        chat = context.bot.getChat(folder_chat)
+        filename, _ = os.path.splitext(file_download)
+        text = f"*Downloading* 📼 {filename} _from_ {chat.title}"
+        query.edit_message_text(text=text, parse_mode='Markdown')
+        # Sending file
+        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'))
+        # remove key from user_data list
+        del context.user_data[keyID]
+
+
+    @check_key_id('Error message')
+    def rec_cancel(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # remove key from user_data list
+        del context.user_data[keyID]
+        # edit message
+        query.edit_message_text(text="<b>Abort</b>", parse_mode='HTML')
 
     def job_timer_reset(self, chat_id):
         # Stop the timer
@@ -262,7 +342,7 @@ class Record:
     def init_record(self, context, chat_id):
         folder_name = str(chat_id)
         first_record = self.recording[chat_id]['msgs'][0]
-        file_name = str(first_record['date']) + ".txt"
+        file_name = str(first_record['date']) + "." + self.extension
         self.recording[chat_id]['file_name'] = file_name
         # Make chat folder if not exist
         if not os.path.isdir(f"{self.records_folder}/{folder_name}"):
@@ -284,14 +364,11 @@ class Record:
         # log status
         logger.info(f"Chat {chat_id} in IDLE")
         # Extract msgs
-        text = ""
         folder_name = str(chat_id)
         file_name = self.recording[chat_id]['file_name']
-        with open(f"{self.records_folder}/{folder_name}/{file_name}", "r") as f:
-            for line in f:
-                text += line
-        if text:
-            context.bot.send_message(chat_id=chat_id, text=text)
+        # Send recordered registration
+        document = f"{self.records_folder}/{folder_name}/{file_name}"
+        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'))
 
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids
