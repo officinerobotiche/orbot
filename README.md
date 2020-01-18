@@ -5,7 +5,7 @@ Telegram bot manager
 
 ```
 start - Start your personal ORBot
-records - all records in this chat
+records - Download your chat record [BETA]
 announce - announce a message in a channel [only admin]
 info - All communities sites
 channels - All channels available

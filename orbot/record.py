@@ -135,7 +135,7 @@ class Record:
         self.settings = settings
         self.channels = channels
         # Timeout autostop
-        self.timeout = 5
+        self.timeout = 10 * 60
         self.extension = "csv"
         # Recording status
         self.recording = {}

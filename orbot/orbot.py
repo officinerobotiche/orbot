@@ -195,6 +195,7 @@ class ORbot:
             message += "All commands available in this bot are show below \n"
         # Print all commands availables
         message += " - /start your bot \n"
+        message += " - /records download your chat record [BETA] \n"
         message += " - /announce a message in a channel [only channel admin] \n"
         message += " - /info about OR \n"
         message += " - All /channels available \n"
