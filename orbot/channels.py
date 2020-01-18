@@ -187,6 +187,9 @@ class Channels:
             filtered_dict = {k:v for (k,v) in self.settings['channels'].items() if query.lower() in context.bot.getChat(k).title.lower()}
         else:
             filtered_dict = self.settings['channels']
+        print(filtered_dict)
+        # Minimum configuration level
+        min_level = int(self.settings['config'].get('inline', '-10'))
         # Make articles list
         articles = []
         for chat_id in filtered_dict:
@@ -199,7 +202,7 @@ class Channels:
                 if link is None:
                     link = context.bot.exportChatInviteLink(chat_id)
             # Show only enable channels
-            if local_level <= level and link is not None:
+            if local_level <= level and level >= min_level and link is not None:
                 # Load icon type channel
                 icon_string = self.getIcons(context, chat_id)
                 # Check if this group can see other group with same level
@@ -207,18 +210,22 @@ class Channels:
                 # Does not work !!!
                 #if chat.photo:
                 #    file_id = chat.photo.small_file_id
-                #    # newFile = context.bot.getFile(file_id)
-                #    articles += [InlineQueryResultCachedPhoto(id=uuid4(), title=chat.title, photo_file_id=file_id)]
+                #    newFile = context.bot.getFile(file_id)
+                #    thumb_url = newFile.file_path
+                #    articles += [InlineQueryResultCachedPhoto(id=uuid4(), title=chat.title, photo_file_id=file_id)
+                thumb_url = None
                 text = f"*{chat.title}*"
                 if chat.description:
                     text += f"\n{chat.description}"
-                articles += [InlineQueryResultArticle(id=uuid4(), title=chat.title,
+                # https://github.com/python-telegram-bot/python-telegram-bot/blob/master/telegram/inline/inlinequeryresultarticle.py
+                articles += [InlineQueryResultArticle(id=uuid4(), title=icon_string + chat.title,
                                                     input_message_content=InputTextMessageContent(text, parse_mode='Markdown'),
                                                     url=link,
+                                                    thumb_url=thumb_url,
                                                     description=chat.description,
                                                     reply_markup=InlineKeyboardMarkup(build_menu(button, 1)))]
         # Update inline query
-        update.inline_query.answer(articles)
+        update.inline_query.answer(articles, cache_time=10)
 
     def getChannels(self, update, context):
         buttons = []

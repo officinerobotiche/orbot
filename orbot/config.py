@@ -36,9 +36,15 @@ import logging
 import json
 # Menu 
 from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype
+from .channels import Channels
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def save_config(file_name, settings):
+    # Save to CSV file
+    with open(file_name, 'w') as fp:
+        json.dump(settings, fp, indent=4, sort_keys=True)
 
 
 class Config:
@@ -58,6 +64,7 @@ class Config:
         dp.add_handler(CallbackQueryHandler(self.config_save, pattern='C_SAVE'))
         dp.add_handler(CallbackQueryHandler(self.config_cancel, pattern='C_CANCEL'))
         dp.add_handler(CallbackQueryHandler(self.config_notify, pattern='C_NOTIFY'))
+        dp.add_handler(CallbackQueryHandler(self.config_inline, pattern='C_INLINE'))
         dp.add_handler(CallbackQueryHandler(self.config_def_channel, pattern='C_DEF_CHANNEL'))
 
     def makeMessage(self, context):
@@ -68,6 +75,8 @@ class Config:
         else:
             def_ch = "None"
         message += ["Default channel: " + def_ch]
+        type_chat = Channels.TYPE[self.settings['config'].get('inline', '0')]
+        message += ["Inline hide: " + type_chat['name'] + " " + (type_chat.get('icon', '👥'))]
         return message
 
     @filter_channel
@@ -80,7 +89,8 @@ class Config:
         # Make buttons
         message = self.makeMessage(context)
         buttons = [InlineKeyboardButton(message[0], callback_data=f"C_NOTIFY {keyID}"),
-                   InlineKeyboardButton(message[1], callback_data=f"C_DEF_CHANNEL {keyID}")]
+                   InlineKeyboardButton(message[1], callback_data=f"C_DEF_CHANNEL {keyID}"),
+                   InlineKeyboardButton(message[2], callback_data=f"C_INLINE {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"C_CANCEL {keyID}")))
         message = f"Configuration"
         # for k, v in self.settings['config'].items():
@@ -111,8 +121,7 @@ class Config:
         # remove key from user_data list
         del context.user_data[keyID]
         # Save to CSV file
-        with open(self.settings_file, 'w') as fp:
-            json.dump(self.settings, fp)
+        save_config(self.settings_file, self.settings)
         # edit message
         query.edit_message_text(text="<b>Stored!</b>\n" + "\n".join(message), parse_mode='HTML')
 
@@ -143,7 +152,27 @@ class Config:
         message = f"🔈 Notifications"
         # edit message
         query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
-    
+
+    @check_key_id('Error message')
+    def config_inline(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        buttons = []
+        level = int(self.settings['config'].get('inline', '0'))
+        for typech in Channels.TYPE:
+            icon = Channels.TYPE[typech].get('icon', '')
+            if icon:
+                icon = f"[{icon}] - "
+            check = " [X]" if level == int(typech) else ""
+            buttons += [InlineKeyboardButton(icon + Channels.TYPE[typech]['name'] + check, callback_data=f"C_SAVE {keyID} inline={typech}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1))
+        message = f"👥 inline hide level"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
     @check_key_id('Error message')
     def config_def_channel(self, update, context):
         query = update.callback_query
