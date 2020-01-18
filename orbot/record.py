@@ -213,15 +213,32 @@ class Record:
         folder_chat = context.user_data[keyID]['folder_name']
         file_download = context.user_data[keyID]['folder'][int(folder_idx)]
         document = f"{self.records_folder}/{folder_chat}/{file_download}"
-        # Write text information
+        # Document info
         chat = context.bot.getChat(folder_chat)
         filename, _ = os.path.splitext(file_download)
-        text = f"*Downloading* 📼 {filename} _from_ {chat.title}"
-        query.edit_message_text(text=text, parse_mode='Markdown')
-        # Sending file
-        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'))
-        # remove key from user_data list
-        del context.user_data[keyID]
+        option = data[3] if len(data) == 4 else ""
+        # Select extra option for admin
+        if not self.channels.isRestricted(update, context) and not option:
+            buttons = [InlineKeyboardButton("📼 Download", callback_data=f"REC_DOWNLOAD {keyID} {folder_idx} download"),
+                       InlineKeyboardButton("🧹 Remove", callback_data=f"REC_DOWNLOAD {keyID} {folder_idx} delete")]
+            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+            text = f"📼 {filename} _from_ {chat.title}"
+            query.edit_message_text(text=text, reply_markup=reply_markup)
+        else:
+            if option == 'download':
+                # Write text information
+                text = f"*Downloading* 📼 {filename} _from_ {chat.title}"
+                query.edit_message_text(text=text, parse_mode='Markdown')
+                # Sending file
+                context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
+            elif option == 'delete':
+                # Remove file
+                os.remove(document)
+                # Write text information
+                text = f"🧹 *Removed* 📼 {filename} _from_ {chat.title}"
+                query.edit_message_text(text=text, parse_mode='Markdown')
+            # remove key from user_data list
+            del context.user_data[keyID]
 
 
     @check_key_id('Error message')
