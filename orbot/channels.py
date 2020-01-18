@@ -187,7 +187,6 @@ class Channels:
             filtered_dict = {k:v for (k,v) in self.settings['channels'].items() if query.lower() in context.bot.getChat(k).title.lower()}
         else:
             filtered_dict = self.settings['channels']
-        print(filtered_dict)
         # Minimum configuration level
         min_level = int(self.settings['config'].get('inline', '-10'))
         # Make articles list
@@ -219,11 +218,11 @@ class Channels:
                     text += f"\n{chat.description}"
                 # https://github.com/python-telegram-bot/python-telegram-bot/blob/master/telegram/inline/inlinequeryresultarticle.py
                 articles += [InlineQueryResultArticle(id=uuid4(), title=icon_string + chat.title,
-                                                    input_message_content=InputTextMessageContent(text, parse_mode='Markdown'),
-                                                    url=link,
-                                                    thumb_url=thumb_url,
-                                                    description=chat.description,
-                                                    reply_markup=InlineKeyboardMarkup(build_menu(button, 1)))]
+                                                      input_message_content=InputTextMessageContent(text, parse_mode='Markdown'),
+                                                      url=link,
+                                                      thumb_url=thumb_url,
+                                                      description=chat.description,
+                                                      reply_markup=InlineKeyboardMarkup(build_menu(button, 1)))]
         # Update inline query
         update.inline_query.answer(articles, cache_time=10)
 

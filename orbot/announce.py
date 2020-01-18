@@ -34,9 +34,39 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramEr
 import logging
 # Menu 
 from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype
+from telegram.utils.helpers import escape_markdown
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def send_message(chat_id, context, keyID, reply_markup):
+    message = context.user_data[keyID]['message']
+    photo = context.user_data[keyID]['photo']
+    try:
+        if photo:
+            msg = context.bot.send_photo(chat_id=chat_id, caption=message, parse_mode='Markdown', reply_markup=reply_markup, photo=photo)
+        else:
+            msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', reply_markup=reply_markup, photo=photo)
+    except TelegramError:
+        if photo:
+            msg = context.bot.send_photo(chat_id=chat_id, caption=message, reply_markup=reply_markup, photo=photo)
+        else:
+            msg = context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+    return msg
+
+def edit_message(update, context, keyID, message, reply_markup):
+    query = update.callback_query
+    photo = context.user_data[keyID]['photo']
+    try:
+        if photo:
+            query.edit_message_caption(caption=message, reply_markup=reply_markup, parse_mode='Markdown')
+        else:
+            query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
+    except TelegramError:
+        if photo:
+            query.edit_message_caption(caption=message, reply_markup=reply_markup)
+        else:
+            query.edit_message_text(text=message, reply_markup=reply_markup)
 
 
 class Announce:
@@ -62,17 +92,25 @@ class Announce:
             context.bot.send_message(chat_id=chat_id, text="You are not admin of this chat, you cannot announce messages", parse_mode='Markdown')
             return
         message = ""
-        if update.message.reply_to_message is not None:
-            message = update.message.reply_to_message.text
-        if context.args:
-            message = " ".join(context.args)
-        if not message:
+        if update.message.reply_to_message:
+            photo = update.message.reply_to_message.photo[-1] if update.message.reply_to_message.photo else []
+        else:
+            photo = []
+        message_caption = update.message.reply_to_message.caption if update.message.reply_to_message is not None else ""
+        message_reply = update.message.reply_to_message.text if update.message.reply_to_message is not None else ""
+        message_text = " ".join(context.args) if context.args else ""
+        if not message_reply and not message_text and not message_caption and not photo:
             context.bot.send_message(chat_id=chat_id, text="Format command:\n/announce [message]", parse_mode='Markdown')
             return
         # Generate ID and seperate value from command
         keyID = str(uuid4())
         # Store value
-        context.user_data[keyID] = {'message': message, 'main_chat': chat_id}
+        message_reply = message_caption if message_caption else message_reply
+        if message_text:
+            message = f"{message_text}: \"{message_reply}\""
+        else:
+            message = message_reply
+        context.user_data[keyID] = {'message': message, 'main_chat': chat_id, 'photo': photo}
         # Check if set default channel
         def_ch = self.settings['config'].get('dch', None)
         if def_ch is not None:
@@ -90,10 +128,8 @@ class Announce:
             footer_button = InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=footer_button))
             message = f"Message to announce:\n{context.user_data[keyID]['message']}"
-        try:
-            context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
-        except TelegramError:
-            context.bot.send_message(chat_id=update.effective_user.id, text=message, reply_markup=reply_markup)
+        # Send message
+        send_message(update.effective_user.id, context, keyID, reply_markup)
 
     def type_announce(self, update, context, keyID):
         message = context.user_data[keyID]['message']
@@ -121,26 +157,24 @@ class Announce:
         context.user_data[keyID]['chat_id'] = data[2]
         message, reply_markup = self.type_announce(update, context, keyID)
         # Extract chat id
-        try:
-            query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
-        except TelegramError:
-            query.edit_message_text(text=message, reply_markup=reply_markup)
+        edit_message(update, context, keyID, message, reply_markup)
 
     def sendAnnounce(self, update, context, chat_id):
         query = update.callback_query
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
-        message = context.user_data[keyID]['message']
+        #message = context.user_data[keyID]['message']
         pin_message = False
         if len(data) > 2:
             if data[2] == 'PIN':
                 pin_message = True
         #Send message
-        try:
-            msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', disable_notification=True)
-        except TelegramError:
-            msg = context.bot.send_message(chat_id=chat_id, text=message, disable_notification=True)
+        msg = send_message(chat_id, context, keyID, None)
+        #try:
+        #    msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', disable_notification=True)
+        #except TelegramError:
+        #    msg = context.bot.send_message(chat_id=chat_id, text=message, disable_notification=True)
         if pin_message:
             # Notify message
             context.bot.pinChatMessage(chat_id=chat_id, message_id=msg.message_id, disable_notification=False)
@@ -155,6 +189,7 @@ class Announce:
         # Send to channel
         chat_id = context.user_data[keyID]['chat_id']
         main_chat = context.user_data[keyID]['main_chat']
+        photo = context.user_data[keyID]['photo']
         chat = context.bot.getChat(chat_id)
         #Send message
         msg = self.sendAnnounce(update, context, chat_id)
@@ -173,7 +208,10 @@ class Announce:
         # remove key from user_data list
         del context.user_data[keyID]
         # edit message
-        query.edit_message_text(text=f"*Announce* {chat.title} Sent!", parse_mode='Markdown')
+        if photo:
+            query.edit_message_caption(caption=f"*Announce* {chat.title} Sent!", parse_mode='Markdown')
+        else:
+            query.edit_message_text(text=f"*Announce* {chat.title} Sent!", parse_mode='Markdown')
 
     @check_key_id('Error message')
     def announce_cancel(self, update, context):
@@ -181,8 +219,12 @@ class Announce:
         data = query.data.split()
         # Extract keyID, chat_id and title
         keyID = data[1]
+        photo = context.user_data[keyID]['photo']
+        # edit message
+        if photo:
+            query.edit_message_caption(caption=f"*Abort*", parse_mode='Markdown')
+        else:
+            query.edit_message_text(text=f"*Abort*", parse_mode='Markdown')
         # remove key from user_data list
         del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=f"Abort")
 # EOF
