@@ -70,15 +70,15 @@ class Config:
         dp.add_handler(CallbackQueryHandler(self.config_rec_msgs, pattern='C_REC_DB'))
 
     def makeMessage(self, context):
-        message = ["Notifications " + ("🔊" if self.settings['config'].get('notify', True) else "🔇")]
+        message = [("🔊" if self.settings['config'].get('notify', True) else "🔇") + " Notifications"]
         def_ch = self.settings['config'].get('dch', None)
         if def_ch is not None:
             def_ch = context.bot.getChat(def_ch).title
         else:
             def_ch = "None"
-        message += ["Default channel: " + def_ch]
+        message += ["📢 Default channel: " + def_ch]
         type_chat = Channels.TYPE[self.settings['config'].get('inline', '0')]
-        message += ["Inline hide: " + type_chat['name'] + " " + (type_chat.get('icon', '👥'))]
+        message += [(type_chat.get('icon', '👥') + " Inline hide: " + type_chat['name'])]
         # Records
         record = self.settings['config'].get('records', {})
         timeout = int(int(record.get('timeout', 10 * 60)) / 60)
