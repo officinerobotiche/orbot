@@ -44,6 +44,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramEr
 import logging
 from datetime import datetime, timedelta
 import shutil
+from urllib.parse import urlparse
+from os.path import splitext, basename
 # Menu 
 from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record
 
@@ -156,8 +158,10 @@ class Record:
         # Get the dispatcher to register handlers
         dp = self.updater.dispatcher
         # Text recorder
-        summarize_handler = MessageHandler(Filters.text, self.record)
-        dp.add_handler(summarize_handler)
+        text_handler = MessageHandler(Filters.text, self.record)
+        dp.add_handler(text_handler)
+        photo_handler = MessageHandler(Filters.photo, self.record_photo)
+        dp.add_handler(photo_handler)
         # Query messages
         dp.add_handler(CommandHandler('records', self.records))
         dp.add_handler(CallbackQueryHandler(self.rec_folder, pattern='REC_DATA'))
@@ -327,25 +331,23 @@ class Record:
             # Remove timer
             del self.recording[chat_id]['job']
 
-    def record(self, update, context):
-        #if update.edit_message is not None:
-        #    print(update.edit_message.text)
+    def record_filter(self, update, context):
         # Check is the message is not empty
         if update.message is None:
             logger.info("Empty message or edited")
-            return
+            return True
         # Check if not a private chat
         if update.message.chat.type == 'private':
             logger.info("Private chat")
-            return
+            return True
         chat_id = update.effective_chat.id
         if str(chat_id) not in self.settings['channels']:
             logger.info("Chat not authorized")
-            return
+            return True
         # Enable only beta channels
         if BETA:
             if not self.settings['channels'][str(chat_id)].get('beta', False):
-                return
+                return True
         # initialization recording chat
         records = self.settings['config'].get('records', {})
         if chat_id not in self.recording:
@@ -358,6 +360,60 @@ class Record:
             logger.info(f"Update msgs size from {self.recording[chat_id]['msgs'].maxlen} to {new_size_msgs}")
             # Update deque
             self.recording[chat_id]['msgs'] = deque(old_msgs, maxlen=new_size_msgs)
+        # restart timer only if is active
+        if 'job' in self.recording[chat_id] and self.recording[chat_id]['status'] in [WRITING]:
+            # restart timer
+            self.job_timer_reset(chat_id)
+        return False
+
+
+    def record_photo(self, update, context):
+        # Fliter and update data channel
+        if self.record_filter(update, context):
+            return
+        chat_id = update.effective_chat.id
+        # Message ID
+        msg_id = update.message.message_id
+        # date message
+        date = update.message.date
+        # User ID
+        user_id = update.message.from_user.id
+        # Username
+        username = update.message.from_user.username
+        # Name
+        firstname = update.message.from_user.first_name
+        # Recording funcions
+        if self.recording[chat_id]['status'] in [WRITING]:
+            # Get file id picture big size
+            file_id = update.message.photo[-1]
+            newFile = context.bot.get_file(file_id)
+            # Get filename
+            picture_page = newFile.file_path
+            disassembled = urlparse(picture_page)
+            file_name = basename(disassembled.path)
+            # Write text
+            text = f"Attached photo {file_name}"
+            if update.message.caption:
+                text+= f" - Caption: {update.message.caption}"
+            # Attention chat in absolute value !!!!!!!!!!!!!
+            folder_name = str(chat_id)[1:]
+            folder_record = self.recording[chat_id]['folder_record']
+            # Path document
+            document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
+            # Download the document
+            newFile.download(document)
+            # Make message
+            msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id, 'firstname': firstname, 'username': username, 'text': text}
+            # Add message in queue text
+            self.recording[chat_id]['msgs'].append(msg)
+            self.writing(context, chat_id, msg)
+
+    def record(self, update, context):
+        #if update.edit_message is not None:
+        #    print(update.edit_message.text)
+        if self.record_filter(update, context):
+            return
+        chat_id = update.effective_chat.id
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -380,11 +436,7 @@ class Record:
             self.writing(context, chat_id, msg)
         else:
             # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)            
-        # restart timer only if is active
-        if 'job' in self.recording[chat_id] and self.recording[chat_id]['status'] in [WRITING]:
-            # restart timer
-            self.job_timer_reset(chat_id)
+            self.recording[chat_id]['msgs'].append(msg)
         # https://python-telegram-bot.readthedocs.io/en/latest/telegram.messageentity.html
         # entities = update.message.parse_entities()
         # Extract all hashtags

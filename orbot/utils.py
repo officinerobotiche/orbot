@@ -47,10 +47,11 @@ def zip_record(file_name, dirName):
     with zipfile.ZipFile(file_name, 'w', zipfile.ZIP_DEFLATED) as zipObj:
         # Iterate over all the files in directory
         for filename in os.listdir(dirName):
-            #create complete filepath of file in directory
-            filePath = os.path.join(dirName, filename)
-            # Add file to zip
-            zipObj.write(filePath, os.path.relpath(filePath, dirName))
+            if filename != os.path.relpath(file_name, dirName):
+                #create complete filepath of file in directory
+                filePath = os.path.join(dirName, filename)
+                # Add file to zip
+                zipObj.write(filePath, os.path.relpath(filePath, dirName))
 
 def save_config(file_name, settings):
     # Save to CSV file
