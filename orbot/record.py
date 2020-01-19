@@ -43,8 +43,9 @@ from telegram.ext import (Updater,
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 import logging
 from datetime import datetime, timedelta
+import shutil
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -181,10 +182,13 @@ class Record:
         return message, reply_markup
 
     def get_records_list(self, context, keyID, folder_chat):
-        context.user_data[keyID]['folder'] = sorted(os.listdir(f"{self.records_folder}/{folder_chat}"))
+        path = f"{self.records_folder}/{folder_chat}"
+        list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
+        context.user_data[keyID]['folder'] = sorted(list_dir)
         buttons = []
         for idx, rec in enumerate(context.user_data[keyID]['folder']):
-            filename, _ = os.path.splitext(rec)
+            #filename, _ = os.path.splitext(rec)
+            filename = str(datetime.fromtimestamp(int(rec)))
             buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
         # Build reply markup
         chat_id = "-" + folder_chat
@@ -234,11 +238,12 @@ class Record:
         keyID = data[1]
         folder_idx = data[2]
         folder_chat = context.user_data[keyID]['folder_name']
-        file_download = context.user_data[keyID]['folder'][int(folder_idx)]
-        document = f"{self.records_folder}/{folder_chat}/{file_download}"
+        folder_download = context.user_data[keyID]['folder'][int(folder_idx)]
+        path_document = f"{self.records_folder}/{folder_chat}/{folder_download}"
         # Document info
         chat = context.bot.getChat("-" + folder_chat)
-        filename, _ = os.path.splitext(file_download)
+        #filename, _ = os.path.splitext(folder_download)
+        filename = str(datetime.fromtimestamp(int(folder_download)))
         option = data[3] if len(data) == 4 else ""
         # Select extra option for admin
         if not self.channels.isRestricted(update, context) and not option:
@@ -251,16 +256,40 @@ class Record:
             if option == 'download':
                 #query.edit_message_text(text=text, parse_mode='Markdown')
                 context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
-                # Sending file
-                context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
+                # Record information
+                self.send_record(context, chat_id, folder_chat, folder_download)
             elif option == 'delete':
                 # Remove file
-                os.remove(document)
+                shutil.rmtree(path_document)
                 # Write text information
                 text = f"🧹 *Removed* 📼 {filename} _from_ {chat.title}"
                 query.edit_message_text(text=text, parse_mode='Markdown')
             # remove key from user_data list
             del context.user_data[keyID]
+
+    def send_record(self, context, chat_id, folder_chat, folder_download):
+        path_document = f"{self.records_folder}/{folder_chat}/{folder_download}"
+        # Document info
+        chat = context.bot.getChat("-" + folder_chat)
+        filename = str(datetime.fromtimestamp(int(folder_download)))
+        # Record information
+        data_folder = os.listdir(path_document)
+        if len(data_folder) > 1:
+            logger.info(f"Make a zip and send records of {folder_download} in {folder_chat}")
+            # path zip file
+            document = f"{path_document}/{filename}.zip"
+            # Zip folder
+            zip_record(document, path_document)
+        else:
+            # Extract name document
+            file_record = data_folder[0]
+            # make final path
+            document = f"{path_document}/{file_record}"
+        # Sending file
+        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
+        # Remove zip file if exist
+        if os.path.isfile(f"{path_document}/{filename}.zip"):
+            os.remove(f"{path_document}/{filename}.zip")
 
 
     @check_key_id('Error message')
@@ -415,9 +444,10 @@ class Record:
     def writing(self, context, chat_id, msg):
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
+        folder_record = self.recording[chat_id]['folder_record']
         file_name = self.recording[chat_id]['file_name']
         # Append new line on file
-        with open(f"{self.records_folder}/{folder_name}/{file_name}", "a") as f:
+        with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "a") as f:
             f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
@@ -426,17 +456,24 @@ class Record:
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
         first_record = self.recording[chat_id]['msgs'][0]
+        # Make new folder and file name
+        folder_record = str(first_record['date'].timestamp()).split('.')[0]
+        self.recording[chat_id]['folder_record'] = folder_record
         file_name = str(first_record['date']) + "." + self.extension
         self.recording[chat_id]['file_name'] = file_name
         # Make chat folder if not exist
         if not os.path.isdir(f"{self.records_folder}/{folder_name}"):
             os.mkdir(f"{self.records_folder}/{folder_name}")
-            logger.info(f"Directory {folder_name} created")
+            logger.info(f"Chat directory {folder_name} created")
+        # Make record folder
+        if not os.path.isdir(f"{self.records_folder}/{folder_name}/{folder_record}"):
+            os.mkdir(f"{self.records_folder}/{folder_name}/{folder_record}")
+            logger.info(f"Record directory {folder_record} created")
         # Init file and write a file
         # "x" - Create - will create a file, returns an error if the file exist
         # "a" - Append - will create a file if the specified file does not exist
         # "w" - Write - will create a file if the specified file does not exist
-        with open(f"{self.records_folder}/{folder_name}/{file_name}", "x") as f:
+        with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "x") as f:
             f.write(f"date,firstname,user_id,text\n")
             for msg in self.recording[chat_id]['msgs']:
                 f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
@@ -451,10 +488,9 @@ class Record:
         # Extract msgs
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
-        file_name = self.recording[chat_id]['file_name']
+        folder_record = self.recording[chat_id]['folder_record']
         # Send recordered registration
-        document = f"{self.records_folder}/{folder_name}/{file_name}"
-        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'))
+        self.send_record(context, chat_id, folder_name, folder_record)
 
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids

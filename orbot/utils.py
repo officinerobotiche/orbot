@@ -31,9 +31,10 @@
 import json
 import logging
 import csv
-from os import path
+import os
 from functools import wraps
 from telegram.ext import ConversationHandler
+import zipfile
 # Offset flags
 OFFSET = 127462 - ord('A')
 
@@ -41,6 +42,15 @@ OFFSET = 127462 - ord('A')
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def zip_record(file_name, dirName):
+    """ Reference: https://thispointer.com/python-how-to-create-a-zip-archive-from-multiple-files-or-directory/ """
+    with zipfile.ZipFile(file_name, 'w', zipfile.ZIP_DEFLATED) as zipObj:
+        # Iterate over all the files in directory
+        for filename in os.listdir(dirName):
+            #create complete filepath of file in directory
+            filePath = os.path.join(dirName, filename)
+            # Add file to zip
+            zipObj.write(filePath, os.path.relpath(filePath, dirName))
 
 def save_config(file_name, settings):
     # Save to CSV file
@@ -151,7 +161,7 @@ def saveFile(csv_file, dict_data):
 
 def LoadCSV(csv_file):
     dict_data = []
-    if path.exists(csv_file):
+    if os.path.exists(csv_file):
         with open(csv_file) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=',')
             line_count = 0
