@@ -313,10 +313,17 @@ class Record:
             if not self.settings['channels'][str(chat_id)].get('beta', False):
                 return
         # initialization recording chat
+        records = self.settings['config'].get('records', {})
         if chat_id not in self.recording:
-            records = self.settings['config'].get('records', {})
             size_record_chat = int(records.get('msgs', self.size_record_chat))
             self.recording[chat_id] = {'status': IDLE, 'msgs': deque(maxlen=size_record_chat)}
+        # Update deque size
+        new_size_msgs = int(records.get('msgs', self.size_record_chat))
+        if new_size_msgs != self.recording[chat_id]['msgs'].maxlen:
+            old_msgs = list(self.recording[chat_id]['msgs'])
+            logger.info(f"Update msgs size from {self.recording[chat_id]['msgs'].maxlen} to {new_size_msgs}")
+            # Update deque
+            self.recording[chat_id]['msgs'] = deque(old_msgs, maxlen=new_size_msgs)
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -368,7 +375,6 @@ class Record:
             text = "🚫 Do you want *stop* now? 🚫"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, self.cb_stop, 'true')
         # Check before to start if require to wait
-        print("Autorestart", self.recording[chat_id].get('delay_autorestart', False))
         if not self.recording[chat_id].get('delay_autorestart', False):
             # Auto record start
             self.auto_start(context, chat_id)
@@ -377,11 +383,10 @@ class Record:
         # Minimum number of messages recordered
         records = self.settings['config'].get('records', {})
         size_record_chat = int(records.get('msgs', self.size_record_chat))
-        min_messages = size_record_chat
         rush_messages = False
-        if len(self.recording[chat_id]['msgs']) >= min_messages:
+        if len(self.recording[chat_id]['msgs']) > size_record_chat // 2:
             # Get first and last message
-            first = self.recording[chat_id]['msgs'][0]
+            first = self.recording[chat_id]['msgs'][-size_record_chat // 2]
             last = self.recording[chat_id]['msgs'][-1]
             # print(f"First: {first['date']} - {first['text']} -- Last: {last['date']} - {last['text']}")
             # Measure delta from last and first message
