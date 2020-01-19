@@ -141,6 +141,7 @@ class Record:
         self.size_record_chat = 10
         self.min_delta = 10
         self.d_start = 10 * 60
+        self.separator = ","
         # Recording status
         self.recording = {}
         # Initialize folder records
@@ -169,9 +170,10 @@ class Record:
         buttons = []
         # List all folders
         for folder in os.listdir(self.records_folder):
-            user_chat = context.bot.get_chat_member(folder, user_id)
+            chat_id = "-" + folder
+            user_chat = context.bot.get_chat_member(chat_id, user_id)
             if user_chat.status not in ['left', 'kicked'] and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
-                chat = context.bot.getChat(folder)
+                chat = context.bot.getChat(chat_id)
                 buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
         message = 'List of records:' if buttons else 'No records'
@@ -185,7 +187,8 @@ class Record:
             filename, _ = os.path.splitext(rec)
             buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
         # Build reply markup
-        chat = context.bot.getChat(folder_chat)
+        chat_id = "-" + folder_chat
+        chat = context.bot.getChat(chat_id)
         message = f"📼 *Records* _from_ {chat.title}" if buttons else "No records!"
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
         return message, reply_markup
@@ -203,8 +206,10 @@ class Record:
             # List of all folders
             message, reply_markup = self.get_folders(context, user_id, keyID)
         else:
-            context.user_data[keyID]['folder_name'] = str(chat_id)
-            message, reply_markup = self.get_records_list(context, keyID, str(chat_id))
+            # Attention chat in absolute value !!!!!!!!!!!!!
+            folder_name = str(chat_id)[1:]
+            context.user_data[keyID]['folder_name'] = folder_name
+            message, reply_markup = self.get_records_list(context, keyID, folder_name)
         # Send message
         context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
 
@@ -232,7 +237,7 @@ class Record:
         file_download = context.user_data[keyID]['folder'][int(folder_idx)]
         document = f"{self.records_folder}/{folder_chat}/{file_download}"
         # Document info
-        chat = context.bot.getChat(folder_chat)
+        chat = context.bot.getChat("-" + folder_chat)
         filename, _ = os.path.splitext(file_download)
         option = data[3] if len(data) == 4 else ""
         # Select extra option for admin
@@ -407,18 +412,19 @@ class Record:
             text = "🔥 This chat getting *hot* 🔥\n📼 Do you want *record* this chat? 📼"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, self.cb_start, 'false')
 
-
     def writing(self, context, chat_id, msg):
-        folder_name = str(chat_id)
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
         file_name = self.recording[chat_id]['file_name']
         # Append new line on file
         with open(f"{self.records_folder}/{folder_name}/{file_name}", "a") as f:
-                f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
+            f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
 
     def init_record(self, context, chat_id):
-        folder_name = str(chat_id)
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
         first_record = self.recording[chat_id]['msgs'][0]
         file_name = str(first_record['date']) + "." + self.extension
         self.recording[chat_id]['file_name'] = file_name
@@ -443,7 +449,8 @@ class Record:
         # log status
         logger.info(f"Chat {chat_id} in IDLE")
         # Extract msgs
-        folder_name = str(chat_id)
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
         file_name = self.recording[chat_id]['file_name']
         # Send recordered registration
         document = f"{self.records_folder}/{folder_name}/{file_name}"
