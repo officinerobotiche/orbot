@@ -43,7 +43,10 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 def zip_record(file_name, dirName):
-    """ Reference: https://thispointer.com/python-how-to-create-a-zip-archive-from-multiple-files-or-directory/ """
+    """ Reference:
+        https://thispointer.com/python-how-to-create-a-zip-archive-from-multiple-files-or-directory/
+        https://stackoverflow.com/questions/14438928/python-zip-a-sub-folder-and-not-the-entire-folder-path
+    """
     with zipfile.ZipFile(file_name, 'w', zipfile.ZIP_DEFLATED) as zipObj:
         # Iterate over all the files in directory
         for filename in os.listdir(dirName):

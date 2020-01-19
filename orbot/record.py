@@ -162,6 +162,8 @@ class Record:
         dp.add_handler(text_handler)
         photo_handler = MessageHandler(Filters.photo, self.record_photo)
         dp.add_handler(photo_handler)
+        document_handler = MessageHandler(Filters.document, self.record_document)
+        dp.add_handler(document_handler)
         # Query messages
         dp.add_handler(CommandHandler('records', self.records))
         dp.add_handler(CallbackQueryHandler(self.rec_folder, pattern='REC_DATA'))
@@ -366,6 +368,42 @@ class Record:
             self.job_timer_reset(chat_id)
         return False
 
+    def record_document(self, update, context):
+        # Fliter and update data channel
+        if self.record_filter(update, context):
+            return
+        chat_id = update.effective_chat.id
+        # Message ID
+        msg_id = update.message.message_id
+        # date message
+        date = update.message.date
+        # User ID
+        user_id = update.message.from_user.id
+        # Username
+        username = update.message.from_user.username
+        # Name
+        firstname = update.message.from_user.first_name
+        # Recording funcions
+        if self.recording[chat_id]['status'] in [WRITING]:
+            # Get file id picture big size
+            file_id = update.message.document.file_id
+            newFile = context.bot.get_file(file_id)
+            # Get filename
+            file_name = update.message.document.file_name
+            # Add text
+            text = f"Attached document: {file_name}"
+            # Attention chat in absolute value !!!!!!!!!!!!!
+            folder_name = str(chat_id)[1:]
+            folder_record = self.recording[chat_id]['folder_record']
+            # Path document
+            document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
+            # Download the document
+            newFile.download(document)
+            # Make message
+            msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id, 'firstname': firstname, 'username': username, 'text': text}
+            # Add message in queue text
+            self.recording[chat_id]['msgs'].append(msg)
+            self.writing(context, chat_id, msg)
 
     def record_photo(self, update, context):
         # Fliter and update data channel
@@ -388,6 +426,7 @@ class Record:
             file_id = update.message.photo[-1]
             newFile = context.bot.get_file(file_id)
             # Get filename
+            # https://stackoverflow.com/questions/10552188/python-split-url-to-find-image-name-and-extension
             picture_page = newFile.file_path
             disassembled = urlparse(picture_page)
             file_name = basename(disassembled.path)
