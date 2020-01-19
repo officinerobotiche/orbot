@@ -41,7 +41,7 @@ from .channels import Channels
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-NUM_OPTIONS = 5
+NUM_OPTIONS = 8
 
 class Config:
 
@@ -135,7 +135,6 @@ class Config:
                 self.settings['config'][group] = {}
             # Store new value
             self.settings['config'][group][name] = value
-            print(self.settings['config'][group])
         else:
             self.settings['config'][name] = value
         # Make the message
@@ -146,6 +145,8 @@ class Config:
         save_config(self.settings_file, self.settings)
         # edit message
         query.edit_message_text(text="<b>Stored!</b>\n" + "\n".join(message), parse_mode='HTML')
+        # Log status
+        logger.info(f"Store new config")
 
     @check_key_id('Error message')
     def config_cancel(self, update, context):
