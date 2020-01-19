@@ -41,6 +41,7 @@ from .channels import Channels
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+NUM_OPTIONS = 5
 
 class Config:
 
@@ -61,6 +62,12 @@ class Config:
         dp.add_handler(CallbackQueryHandler(self.config_notify, pattern='C_NOTIFY'))
         dp.add_handler(CallbackQueryHandler(self.config_inline, pattern='C_INLINE'))
         dp.add_handler(CallbackQueryHandler(self.config_def_channel, pattern='C_DEF_CHANNEL'))
+        # Recording
+        dp.add_handler(CallbackQueryHandler(self.config_rec_menu, pattern='C_REC_MENU'))
+        dp.add_handler(CallbackQueryHandler(self.config_rec_timeout, pattern='C_REC_TOUT'))
+        dp.add_handler(CallbackQueryHandler(self.config_rec_min_start, pattern='C_REC_ST'))
+        dp.add_handler(CallbackQueryHandler(self.config_rec_delay_autorestart, pattern='C_REC_DE_ST'))
+        dp.add_handler(CallbackQueryHandler(self.config_rec_msgs, pattern='C_REC_DB'))
 
     def makeMessage(self, context):
         message = ["Notifications " + ("🔊" if self.settings['config'].get('notify', True) else "🔇")]
@@ -72,6 +79,16 @@ class Config:
         message += ["Default channel: " + def_ch]
         type_chat = Channels.TYPE[self.settings['config'].get('inline', '0')]
         message += ["Inline hide: " + type_chat['name'] + " " + (type_chat.get('icon', '👥'))]
+        # Records
+        record = self.settings['config'].get('record', {})
+        timeout = int(int(record.get('timeout', 10 * 60)) / 60)
+        message += [f"🛑 Timeout stop: {timeout}min"]
+        min_start = int(record.get('min_start', 10))
+        message += [f"🏃‍♂️ Autostart: {min_start}min"]
+        d_start = int(record.get('d_start', 10))
+        message += [f"🚦 Delay autorestart: {d_start}min"]
+        msgs = int(record.get('msgs', 10))
+        message += [f"📨 Size DB msgs: {msgs}"]
         return message
 
     @filter_channel
@@ -85,14 +102,15 @@ class Config:
         message = self.makeMessage(context)
         buttons = [InlineKeyboardButton(message[0], callback_data=f"C_NOTIFY {keyID}"),
                    InlineKeyboardButton(message[1], callback_data=f"C_DEF_CHANNEL {keyID}"),
-                   InlineKeyboardButton(message[2], callback_data=f"C_INLINE {keyID}")]
+                   InlineKeyboardButton(message[2], callback_data=f"C_INLINE {keyID}"),
+                   InlineKeyboardButton("📼 records", callback_data=f"C_REC_MENU {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"C_CANCEL {keyID}")))
         message = f"Configuration"
         # for k, v in self.settings['config'].items():
         #    message += f"\n - {k}={v}"
         context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
-        context.user_data[keyID] = {} 
+        context.user_data[keyID] = {}
 
     @check_key_id('Error message')
     def config_save(self, update, context):
@@ -101,15 +119,24 @@ class Config:
         # Extract keyID, chat_id and title
         keyID = data[1]
         # Add chat id in user data
-        for n in range(2, len(data)):
-            var = data[n]
-            name, value = var.split('=')
-            if value == "True":
-                value = True
-            elif value == "False":
-                value = False
-            elif value == "None":
-                value = None
+        var = data[2]
+        name, value = var.split('=')
+        if value == "True":
+            value = True
+        elif value == "False":
+            value = False
+        elif value == "None":
+            value = None
+        # Subgroup check
+        if len(data) > 3:
+            group = data[3]
+            # Initialize group if not exist
+            if group not in self.settings['config']:
+                self.settings['config'][group] = {}
+            # Store new value
+            self.settings['config'][group][name] = value
+            print(self.settings['config'][group])
+        else:
             self.settings['config'][name] = value
         # Make the message
         message = self.makeMessage(context)
@@ -190,6 +217,100 @@ class Config:
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1,
                                             footer_buttons=footer_button))
         message = f"Select the default channel:"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def config_rec_menu(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        message = self.makeMessage(context)
+        buttons = [InlineKeyboardButton(message[3], callback_data=f"C_REC_TOUT {keyID}"),
+                   InlineKeyboardButton(message[4], callback_data=f"C_REC_ST {keyID}"),
+                   InlineKeyboardButton(message[5], callback_data=f"C_REC_DE_ST {keyID}"),
+                   InlineKeyboardButton(message[6], callback_data=f"C_REC_DB {keyID}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"C_CANCEL {keyID}")))
+        message = f"Configuration"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def config_rec_timeout(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        buttons = []
+        record = self.settings['config'].get('record', {})
+        timeout = int(record.get('timeout', 10 * 60))
+        for i in range(1, NUM_OPTIONS + 1):
+            value = i * 5 * 60
+            tvalue = int(value / 60)
+            isSelected = " [X]" if timeout == value else ""
+            buttons += [InlineKeyboardButton(f"{tvalue}min " + isSelected, callback_data=f"C_SAVE {keyID} timeout={value} record")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
+        message = f"🛑 Timeout stop record"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def config_rec_min_start(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        buttons = []
+        record = self.settings['config'].get('record', {})
+        min_start = int(record.get('min_start', 10))
+        for i in range(1, NUM_OPTIONS + 1):
+            value = i * 5
+            isSelected = " [X]" if min_start == value else ""
+            buttons += [InlineKeyboardButton(f"{value}min " + isSelected, callback_data=f"C_SAVE {keyID} min_start={value} record")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
+        message = f"🏃‍♂️ Autostart record"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def config_rec_delay_autorestart(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        buttons = []
+        record = self.settings['config'].get('record', {})
+        d_start = int(record.get('d_start', 10))
+        for i in range(1, NUM_OPTIONS + 1):
+            value = i * 5
+            isSelected = " [X]" if d_start == value else ""
+            buttons += [InlineKeyboardButton(f"{value}min " + isSelected, callback_data=f"C_SAVE {keyID} d_start={value} record")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
+        message = f"🚦 Delay autorestart"
+        # edit message
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def config_rec_msgs(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        # Make buttons
+        buttons = []
+        record = self.settings['config'].get('record', {})
+        msgs = int(record.get('msgs', 10))
+        for i in range(1, NUM_OPTIONS + 1):
+            value = i * 10
+            isSelected = " [X]" if msgs == value else ""
+            buttons += [InlineKeyboardButton(f"{value} " + isSelected, callback_data=f"C_SAVE {keyID} msgs={value} record")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
+        message = f"📨 Size DB msgs"
         # edit message
         query.edit_message_text(text=message, parse_mode='HTML', reply_markup=reply_markup)
 # EOF
