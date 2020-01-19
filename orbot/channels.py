@@ -182,19 +182,21 @@ class Channels:
         # extract level user
         local_chat_id = str(update.effective_user.id)
         local_level = self.getLevel(context, local_chat_id)
+        # Sort channels
+        channels = sorted(self.settings['channels'].items(), key=lambda kv:(context.bot.getChat(kv[0]).title, kv[1]))
         # If there is a query filter the channels
         if query:
-            filtered_dict = {k:v for (k,v) in self.settings['channels'].items() if query.lower() in context.bot.getChat(k).title.lower()}
+            filtered_dict = {k:v for (k,v) in channels if query.lower() in context.bot.getChat(k).title.lower()}
         else:
-            filtered_dict = self.settings['channels']
+            filtered_dict = channels
         # Minimum configuration level
         min_level = int(self.settings['config'].get('inline', '-10'))
         # Make articles list
         articles = []
-        for chat_id in filtered_dict:
+        for chat_id, data in filtered_dict:
             chat = context.bot.getChat(chat_id)
             link = chat.invite_link
-            level = int(self.settings['channels'][chat_id].get('type', "0"))
+            level = int(data.get('type', "0"))
             # Update link
             if isAdmin(update, context, context.bot.username, chat_id=chat_id):
                 # If None generate a link
@@ -235,11 +237,13 @@ class Channels:
             logger.debug(f"{local_chat.title} = {local_level}")
         else:
             local_level = self.getLevel(context, local_chat_id)
-        for chat_id in self.settings['channels']:
+        # Sort channels
+        channels = sorted(self.settings['channels'].items(), key=lambda kv:(context.bot.getChat(kv[0]).title, kv[1]))
+        for chat_id, data in channels:
             chat = context.bot.getChat(chat_id)
             name = chat.title
             link = chat.invite_link
-            level = int(self.settings['channels'][chat_id].get('type', "0"))
+            level = int(data.get('type', "0"))
             if isAdmin(update, context, context.bot.username, chat_id=chat_id):
                 # If None generate a link
                 if link is None:
@@ -288,7 +292,9 @@ class Channels:
         keyID = str(uuid4())
         # Extract chat id
         buttons = []
-        for chat_id in self.settings['channels']:
+        # Sort channels
+        channels = sorted(self.settings['channels'].items(), key=lambda kv:(context.bot.getChat(kv[0]).title, kv[1]))
+        for chat_id, _ in channels:
             chat = context.bot.getChat(chat_id)
             title = chat.title
             # Load icon type channel
