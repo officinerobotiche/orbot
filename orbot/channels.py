@@ -186,7 +186,7 @@ class Channels:
         channels = sorted(self.settings['channels'].items(), key=lambda kv:(context.bot.getChat(kv[0]).title, kv[1]))
         # If there is a query filter the channels
         if query:
-            filtered_dict = {k:v for (k,v) in channels if query.lower() in context.bot.getChat(k).title.lower()}
+            filtered_dict = [(k,v) for (k,v) in channels if query.lower() in context.bot.getChat(k).title.lower()]
         else:
             filtered_dict = channels
         # Minimum configuration level
