@@ -131,6 +131,35 @@ class Autoreply:
 
 IDLE, WAIT_START, WAIT_STOP, WRITING = range(4)
 
+MSG_TEXT_ORDER = ['date', 'user_id', 'firstname', 'msg_id', 'reply_id', 'forward_from', 'text']
+
+def make_dict_message(update, text):
+    # Message ID
+    msg_id = update.message.message_id
+    # date message
+    date = update.message.date
+    # User ID
+    user_id = update.message.from_user.id
+    # Username
+    username = update.message.from_user.username
+    # Name
+    firstname = update.message.from_user.first_name
+    # Reply id
+    reply_id = update.message.reply_to_message.message_id if update.message.reply_to_message else ''
+    # Reply id
+    forward_from = update.message.forward_from.id if update.message.forward_from else ''
+    # Make message
+    msg = {'msg_id': msg_id,
+            'date': date,
+            'user_id': user_id,
+            'firstname': firstname,
+            'username': username,
+            'text': text,
+            'reply_id': reply_id,
+            'forward_from': forward_from}
+    return msg
+
+
 class Record:
 
     def __init__(self, updater, settings, settings_file, channels):
@@ -144,7 +173,7 @@ class Record:
         self.size_record_chat = 10
         self.min_delta = 10
         self.d_start = 10 * 60
-        self.separator = ","
+        self.separator = "\t"
         # Recording status
         self.recording = {}
         # Initialize folder records
@@ -378,20 +407,10 @@ class Record:
         return False
 
     def record_document(self, update, context):
-        # Fliter and update data channel
+        # Filter and update data channel
         if self.record_filter(update, context):
             return
         chat_id = update.effective_chat.id
-        # Message ID
-        msg_id = update.message.message_id
-        # date message
-        date = update.message.date
-        # User ID
-        user_id = update.message.from_user.id
-        # Username
-        username = update.message.from_user.username
-        # Name
-        firstname = update.message.from_user.first_name
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
             # Get file id picture big size
@@ -409,26 +428,16 @@ class Record:
             # Download the document
             newFile.download(document)
             # Make message
-            msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id, 'firstname': firstname, 'username': username, 'text': text}
+            msg = make_dict_message(update, text)
             # Add message in queue text
             self.recording[chat_id]['msgs'].append(msg)
             self.writing(context, chat_id, msg)
 
     def record_photo(self, update, context):
-        # Fliter and update data channel
+        # Filter and update data channel
         if self.record_filter(update, context):
             return
         chat_id = update.effective_chat.id
-        # Message ID
-        msg_id = update.message.message_id
-        # date message
-        date = update.message.date
-        # User ID
-        user_id = update.message.from_user.id
-        # Username
-        username = update.message.from_user.username
-        # Name
-        firstname = update.message.from_user.first_name
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
             # Get file id picture big size
@@ -451,7 +460,7 @@ class Record:
             # Download the document
             newFile.download(document)
             # Make message
-            msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id, 'firstname': firstname, 'username': username, 'text': text}
+            msg = make_dict_message(update, text)
             # Add message in queue text
             self.recording[chat_id]['msgs'].append(msg)
             self.writing(context, chat_id, msg)
@@ -459,24 +468,17 @@ class Record:
     def record(self, update, context):
         #if update.edit_message is not None:
         #    print(update.edit_message.text)
+        # print(update.message)
+        if update.message.reply_to_message:
+            print(update.message.reply_to_message.message_id)
+        # Filter and update data channel
         if self.record_filter(update, context):
             return
         chat_id = update.effective_chat.id
-        # print(update.message)
-        # Message ID
-        msg_id = update.message.message_id
         # Text message
         text = update.message.text
-        # date message
-        date = update.message.date
-        # User ID
-        user_id = update.message.from_user.id
-        # Username
-        username = update.message.from_user.username
-        # Name
-        firstname = update.message.from_user.first_name
         # Make message
-        msg = {'msg_id': msg_id, 'date': date, 'user_id': user_id, 'firstname': firstname, 'username': username, 'text': text}
+        msg = make_dict_message(update, text)
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
             # Add message in queue text
@@ -548,7 +550,8 @@ class Record:
         file_name = self.recording[chat_id]['file_name']
         # Append new line on file
         with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "a") as f:
-            f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
+            data = [str(msg[name]) for name in MSG_TEXT_ORDER]
+            f.write(f"{self.separator}".join(data) + f"\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
 
@@ -574,9 +577,12 @@ class Record:
         # "a" - Append - will create a file if the specified file does not exist
         # "w" - Write - will create a file if the specified file does not exist
         with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "x") as f:
-            f.write(f"date,firstname,user_id,text\n")
+            # Write header
+            f.write(f"{self.separator}".join(MSG_TEXT_ORDER) + f"\n")
+            # Copy all messages
             for msg in self.recording[chat_id]['msgs']:
-                f.write(f"{msg['date']},{msg['firstname']},{msg['user_id']},{msg['text']}\n")
+                data = [str(msg[name]) for name in MSG_TEXT_ORDER]
+                f.write(f"{self.separator}".join(data) + f"\n")
         # log status
         logger.info(f"Chat {chat_id} in WRITING")
 
