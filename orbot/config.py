@@ -85,7 +85,7 @@ class Config:
         message += [f"🛑 Timeout stop: {timeout}min"]
         min_start = int(record.get('min_start', 10))
         message += [f"🏃‍♂️ Autostart: {min_start}min"]
-        d_start = int(record.get('d_start', 10))
+        d_start = int(int(record.get('d_start', 10 * 60)) / 60)
         message += [f"🚦 Delay autorestart: {d_start}min"]
         msgs = int(record.get('msgs', 10))
         message += [f"📨 Size DB msgs: {msgs}"]
@@ -251,7 +251,7 @@ class Config:
             value = i * 5 * 60
             tvalue = int(value / 60)
             isSelected = " [X]" if timeout == value else ""
-            buttons += [InlineKeyboardButton(f"{tvalue}min " + isSelected, callback_data=f"C_SAVE {keyID} timeout={value} record")]
+            buttons += [InlineKeyboardButton(f"{tvalue}min " + isSelected, callback_data=f"C_SAVE {keyID} timeout={value} records")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
         message = f"🛑 Timeout stop record"
         # edit message
@@ -270,7 +270,7 @@ class Config:
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 5
             isSelected = " [X]" if min_start == value else ""
-            buttons += [InlineKeyboardButton(f"{value}min " + isSelected, callback_data=f"C_SAVE {keyID} min_start={value} record")]
+            buttons += [InlineKeyboardButton(f"{value}min " + isSelected, callback_data=f"C_SAVE {keyID} min_start={value} records")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
         message = f"🏃‍♂️ Autostart record"
         # edit message
@@ -285,11 +285,12 @@ class Config:
         # Make buttons
         buttons = []
         record = self.settings['config'].get('records', {})
-        d_start = int(record.get('d_start', 10))
+        d_start = int(record.get('d_start', 10 * 60))
         for i in range(1, NUM_OPTIONS + 1):
-            value = i * 5
+            value = i * 5 * 60
+            tvalue = int(value / 60)
             isSelected = " [X]" if d_start == value else ""
-            buttons += [InlineKeyboardButton(f"{value}min " + isSelected, callback_data=f"C_SAVE {keyID} d_start={value} record")]
+            buttons += [InlineKeyboardButton(f"{tvalue}min " + isSelected, callback_data=f"C_SAVE {keyID} d_start={value} records")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
         message = f"🚦 Delay autorestart"
         # edit message
@@ -308,7 +309,7 @@ class Config:
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 10
             isSelected = " [X]" if msgs == value else ""
-            buttons += [InlineKeyboardButton(f"{value} " + isSelected, callback_data=f"C_SAVE {keyID} msgs={value} record")]
+            buttons += [InlineKeyboardButton(f"{value} " + isSelected, callback_data=f"C_SAVE {keyID} msgs={value} records")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, int(NUM_OPTIONS / 2)))
         message = f"📨 Size DB msgs"
         # edit message

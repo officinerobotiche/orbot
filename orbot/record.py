@@ -140,10 +140,12 @@ class Record:
         self.extension = "csv"
         self.size_record_chat = 10
         self.min_delta = 10
+        self.d_start = 10 * 60
         # Recording status
         self.recording = {}
         # Initialize folder records
-        self.records_folder = self.settings['config'].get('records', 'records')
+        records = self.settings['config'].get('records', {})
+        self.records_folder = records.get('folder', 'records')
         if not os.path.isdir(self.records_folder):
             os.mkdir(self.records_folder)
             logger.info(f"Directory {self.records_folder} created")
@@ -365,8 +367,11 @@ class Record:
             # Send message
             text = "🚫 Do you want *stop* now? 🚫"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_STOP', text, self.cb_stop, 'true')
-        # Auto record start
-        self.auto_start(context, chat_id)
+        # Check before to start if require to wait
+        print("Autorestart", self.recording[chat_id].get('delay_autorestart', False))
+        if not self.recording[chat_id].get('delay_autorestart', False):
+            # Auto record start
+            self.auto_start(context, chat_id)
 
     def auto_start(self, context, chat_id):
         # Minimum number of messages recordered
@@ -391,9 +396,12 @@ class Record:
         if rush_messages and self.recording[chat_id]['status'] == IDLE:
             # Wait reply
             self.recording[chat_id]['status'] = WAIT_START
+            # Set autorestart
+            self.recording[chat_id]['autorestart'] = True
             # Send message
             text = "🔥 This chat getting *hot* 🔥\n📼 Do you want *record* this chat? 📼"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, self.cb_start, 'false')
+
 
     def writing(self, context, chat_id, msg):
         folder_name = str(chat_id)
@@ -471,18 +479,46 @@ class Record:
                 self.job_timer_start(chat_id)
                 # Initialize writing mode
                 self.recording[chat_id]['status'] = WRITING
+                # Clear wait autorestart
+                if 'delay_autorestart' in self.recording[chat_id]:
+                    self.recording[chat_id]['delay_autorestart'] = False
+                # Stop the timer
+                if 'job_delay_autorestart' in self.recording[chat_id]:
+                    job = self.recording[chat_id]['job_delay_autorestart']
+                    job.enabled = False  # Temporarily disable this job
+                    job.schedule_removal()  # Remove this job completely
                 # Message to send
                 text = f"📼 *Recording*..."
                 context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
                 self.recording[chat_id]['status'] = IDLE
+                # Clear wait autorestart
+                if 'autorestart' in self.recording[chat_id]:
+                    if self.recording[chat_id]['autorestart']:
+                        self.recording[chat_id]['delay_autorestart'] = True
                 # Send the message
                 text = f"Ok next time!"
                 context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            # Clear autorestart status
+            if 'autorestart' in self.recording[chat_id]:
+                self.recording[chat_id]['autorestart'] = False
+            # Run delay autorestart
+            if self.recording[chat_id].get('delay_autorestart', False):
+                records = self.settings['config'].get('records', {})
+                d_start = int(records.get('d_start', self.d_start))
+                logger.info(f"Delay autorestart chat: {chat_id} for {d_start}s")
+                self.recording[chat_id]['job_delay_autorestart'] = self.job.run_once(self.reset_delay_autorestart, d_start, context=chat_id)
         else:
             text = "Error message"
             context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
 
+    def reset_delay_autorestart(self, context: CallbackContext):
+        # Extract chat ids
+        chat_id = context.job.context
+        # Clear wait autorestart
+        if 'delay_autorestart' in self.recording[chat_id]:
+            self.recording[chat_id]['delay_autorestart'] = False
+        logger.info(f"Reset delay autorestart chat: {chat_id}")
 
     @check_key_id('Error message')
     def stop(self, update, context):
