@@ -52,7 +52,7 @@ from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BETA = True
+BETA = False
 START = 'start'
 STOP = 'stop'
 
@@ -183,24 +183,33 @@ class Record:
                 chat = context.bot.getChat(chat_id)
                 buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
-        message = 'List of records:' if buttons else 'No records'
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        if buttons:
+            message = 'List of records:'
+            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        else:
+            message = 'No records'
+            reply_markup = InlineKeyboardMarkup(buttons)
         return message, reply_markup
 
     def get_records_list(self, context, keyID, folder_chat):
         path = f"{self.records_folder}/{folder_chat}"
-        list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
-        context.user_data[keyID]['folder'] = sorted(list_dir)
         buttons = []
-        for idx, rec in enumerate(context.user_data[keyID]['folder']):
-            #filename, _ = os.path.splitext(rec)
-            filename = str(datetime.fromtimestamp(int(rec)))
-            buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
-        # Build reply markup
-        chat_id = "-" + folder_chat
-        chat = context.bot.getChat(chat_id)
-        message = f"📼 *Records* _from_ {chat.title}" if buttons else "No records!"
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        if os.path.isdir(path):
+            list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
+            context.user_data[keyID]['folder'] = sorted(list_dir)
+            for idx, rec in enumerate(context.user_data[keyID]['folder']):
+                #filename, _ = os.path.splitext(rec)
+                filename = str(datetime.fromtimestamp(int(rec)))
+                buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
+            # Build reply markup
+            chat_id = "-" + folder_chat
+            chat = context.bot.getChat(chat_id)
+        if buttons:
+            message = f"📼 *Records* _from_ {chat.title}"
+            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+        else:
+            message = 'No records'
+            reply_markup = InlineKeyboardMarkup(buttons)
         return message, reply_markup
 
     @rtype(['private', 'channel'])
