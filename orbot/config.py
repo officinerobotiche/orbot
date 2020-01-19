@@ -80,7 +80,7 @@ class Config:
         type_chat = Channels.TYPE[self.settings['config'].get('inline', '0')]
         message += ["Inline hide: " + type_chat['name'] + " " + (type_chat.get('icon', '👥'))]
         # Records
-        record = self.settings['config'].get('record', {})
+        record = self.settings['config'].get('records', {})
         timeout = int(int(record.get('timeout', 10 * 60)) / 60)
         message += [f"🛑 Timeout stop: {timeout}min"]
         min_start = int(record.get('min_start', 10))
@@ -245,7 +245,7 @@ class Config:
         keyID = data[1]
         # Make buttons
         buttons = []
-        record = self.settings['config'].get('record', {})
+        record = self.settings['config'].get('records', {})
         timeout = int(record.get('timeout', 10 * 60))
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 5 * 60
@@ -265,7 +265,7 @@ class Config:
         keyID = data[1]
         # Make buttons
         buttons = []
-        record = self.settings['config'].get('record', {})
+        record = self.settings['config'].get('records', {})
         min_start = int(record.get('min_start', 10))
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 5
@@ -284,7 +284,7 @@ class Config:
         keyID = data[1]
         # Make buttons
         buttons = []
-        record = self.settings['config'].get('record', {})
+        record = self.settings['config'].get('records', {})
         d_start = int(record.get('d_start', 10))
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 5
@@ -303,7 +303,7 @@ class Config:
         keyID = data[1]
         # Make buttons
         buttons = []
-        record = self.settings['config'].get('record', {})
+        record = self.settings['config'].get('records', {})
         msgs = int(record.get('msgs', 10))
         for i in range(1, NUM_OPTIONS + 1):
             value = i * 10

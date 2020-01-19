@@ -275,7 +275,9 @@ class Record:
 
     def job_timer_start(self, chat_id):
         # add job in recording dictionary
-        self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, self.timeout, context=chat_id)
+        records = self.settings['config'].get('records', {})
+        timeout = int(records.get('timeout', self.timeout))
+        self.recording[chat_id]['job'] = self.job.run_once(self.timer_stop, timeout, context=chat_id)
 
     def job_timer_stop(self, chat_id):
         if 'job' in self.recording[chat_id]:
@@ -310,7 +312,9 @@ class Record:
                 return
         # initialization recording chat
         if chat_id not in self.recording:
-            self.recording[chat_id] = {'status': IDLE, 'msgs': deque(maxlen=self.size_record_chat)}
+            records = self.settings['config'].get('records', {})
+            size_record_chat = int(records.get('msgs', self.size_record_chat))
+            self.recording[chat_id] = {'status': IDLE, 'msgs': deque(maxlen=size_record_chat)}
         # print(update.message)
         # Message ID
         msg_id = update.message.message_id
@@ -366,7 +370,9 @@ class Record:
 
     def auto_start(self, context, chat_id):
         # Minimum number of messages recordered
-        min_messages = self.size_record_chat
+        records = self.settings['config'].get('records', {})
+        size_record_chat = int(records.get('msgs', self.size_record_chat))
+        min_messages = size_record_chat
         rush_messages = False
         if len(self.recording[chat_id]['msgs']) >= min_messages:
             # Get first and last message
@@ -377,7 +383,9 @@ class Record:
             delta = last['date'] - first['date']
             # print(f"Delta: {delta}")
             # If delta is minus or equal the minimum time enable rush_messages
-            if delta <= timedelta(minutes=self.min_delta):
+            records = self.settings['config'].get('records', {})
+            min_delta = int(records.get('min_start', self.min_delta))
+            if delta <= timedelta(minutes=min_delta):
                 rush_messages = True
         # Run Autostart
         if rush_messages and self.recording[chat_id]['status'] == IDLE:
