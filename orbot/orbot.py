@@ -161,7 +161,8 @@ class ORbot:
     @filter_channel
     def unknown(self, update, context):
         logger.info(f"Unknown command: {update.message.text}")
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
+        # Disable reply unknown messages
+        # context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
     @register
     def add_group(self, update, context):
