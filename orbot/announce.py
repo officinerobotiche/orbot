@@ -107,7 +107,9 @@ class Announce:
         # Store value
         message_reply = message_caption if message_caption else message_reply
         if message_text:
-            message = f"{message_text}: \"{message_reply}\""
+            message = f"{message_text}"
+            if message_reply:
+                message += f": \"{message_reply}\""
         else:
             message = message_reply
         context.user_data[keyID] = {'message': message, 'main_chat': chat_id, 'photo': photo}
