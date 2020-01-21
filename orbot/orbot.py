@@ -127,6 +127,8 @@ class ORbot:
         # SIGTERM or SIGABRT. This should be used most of the time, since
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
+        # Switch all recording if are actives
+        self.record.close_all_records(self.bot)
         # Send a switch off message
         infobot = self.bot.get_me()
         for user_chat_id in self.LIST_OF_ADMINS:

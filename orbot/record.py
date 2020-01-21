@@ -130,7 +130,7 @@ class Autoreply:
                                            reply_markup=reply_markup)
 
 IDLE, WAIT_START, WAIT_STOP, WRITING = range(4)
-
+RECORDING = 'RECORDING'
 MSG_TEXT_ORDER = ['date', 'user_id', 'firstname', 'msg_id', 'reply_id', 'forward_from', 'text']
 
 def make_dict_message(update, text):
@@ -202,6 +202,17 @@ class Record:
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
 
+    def close_all_records(self, bot):
+        for chat_id in self.recording:
+            if self.recording[chat_id]['status'] not in [IDLE]:
+                # Set in idle mode and wait a new record
+                self.idle(bot, chat_id)
+                # Set in idle mode
+                self.recording[chat_id]['status'] = IDLE
+                # Send message
+                text = f"🛑 Recording *stop*!"
+                bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+
     def get_folders(self, context, user_id, keyID):
         buttons = []
         # List all folders
@@ -227,7 +238,10 @@ class Record:
             list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
             context.user_data[keyID]['folder'] = sorted(list_dir)
             for idx, rec in enumerate(context.user_data[keyID]['folder']):
-                #filename, _ = os.path.splitext(rec)
+                chat_id = "-" + folder_chat
+                if int(chat_id) in self.recording:
+                    if self.recording[int(chat_id)]['status'] in [WRITING, WAIT_STOP]:
+                        continue
                 filename = str(datetime.fromtimestamp(int(rec)))
                 buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
             # Build reply markup
@@ -301,7 +315,7 @@ class Record:
                 #query.edit_message_text(text=text, parse_mode='Markdown')
                 context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
                 # Record information
-                self.send_record(context, chat_id, folder_chat, folder_download)
+                self.send_record(context.bot, chat_id, folder_chat, folder_download)
             elif option == 'delete':
                 # Remove file
                 shutil.rmtree(path_document)
@@ -311,10 +325,10 @@ class Record:
             # remove key from user_data list
             del context.user_data[keyID]
 
-    def send_record(self, context, chat_id, folder_chat, folder_download):
+    def send_record(self, bot, chat_id, folder_chat, folder_download):
         path_document = f"{self.records_folder}/{folder_chat}/{folder_download}"
         # Document info
-        chat = context.bot.getChat("-" + folder_chat)
+        chat = bot.getChat("-" + folder_chat)
         filename = str(datetime.fromtimestamp(int(folder_download)))
         # Record information
         data_folder = os.listdir(path_document)
@@ -330,7 +344,7 @@ class Record:
             # make final path
             document = f"{path_document}/{file_record}"
         # Sending file
-        context.bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
+        bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
         # Remove zip file if exist
         if os.path.isfile(f"{path_document}/{filename}.zip"):
             os.remove(f"{path_document}/{filename}.zip")
@@ -586,7 +600,7 @@ class Record:
         # log status
         logger.info(f"Chat {chat_id} in WRITING")
 
-    def idle(self, context, chat_id):
+    def idle(self, bot, chat_id):
         # Clear message list
         self.recording[chat_id]['msgs'].clear()
         # log status
@@ -596,7 +610,7 @@ class Record:
         folder_name = str(chat_id)[1:]
         folder_record = self.recording[chat_id]['folder_record']
         # Send recordered registration
-        self.send_record(context, chat_id, folder_name, folder_record)
+        self.send_record(bot, chat_id, folder_name, folder_record)
 
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids
@@ -705,7 +719,7 @@ class Record:
                 self.job_timer_stop(chat_id)
                 self.job_timer_delete(chat_id)
                 # Set in idle mode and wait a new record
-                self.idle(context, chat_id)
+                self.idle(context.bot, chat_id)
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
