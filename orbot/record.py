@@ -211,14 +211,12 @@ class Record:
         text = update.message.text
         # Make message
         msg = make_dict_message(update, text)
+        # Add message in queue text
+        self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
-            self.writing(context, chat_id, msg)
-        else:
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
+            # Write message on history
+            self.writing(context.bot, chat_id, msg)
         return text
 
     def close_all_records(self, bot):
@@ -392,11 +390,11 @@ class Record:
             if self.recording[chat_id]['status'] == IDLE:
                 control = "record"
                 self.recording[chat_id]['status'] = WAIT_START
-                type_message = "*RECORD*"
+                type_message = "📼 *RECORD*"
             elif self.recording[chat_id]['status'] == WRITING:
                 control = "stop"
                 self.recording[chat_id]['status'] = WAIT_STOP
-                type_message = "*STOP*"
+                type_message = "🚫 *STOP*"
             else:
                 control = "ERROR"
                 type_message = control
@@ -405,7 +403,7 @@ class Record:
             # Store value
             context.user_data[keyID] = {'control': control, 'chat_id': chat_id}
             text = f"Do you want {type_message} this chat?\n"
-            text += f"You can also use #start and #stop in your message"
+            text += f"_[You can also use #start and #stop in your message]_"
             self.recording[chat_id]['job_player'] = Autoreply(self.updater, context, chat_id, 'REC_PLAYER', text, self.cb_player, f'false {control}', keyID=keyID)
 
     @check_key_id('Error message')
@@ -506,64 +504,76 @@ class Record:
             self.job_timer_reset(chat_id)
         return False
 
+    def save_document(self, bot, chat_id, msg):
+        # Get file id picture big size
+        file_id = msg['document']['file_id']
+        newFile = bot.get_file(file_id)
+        # Get filename
+        file_name = msg['document']['file_name']
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
+        folder_record = self.recording[chat_id]['folder_record']
+        # Path document
+        document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
+        # Download the document
+        newFile.download(document)
+
     def record_document(self, update, context):
         # Filter and update data channel
         if self.record_filter(update, context):
             return
         chat_id = update.effective_chat.id
+        # Get filename
+        file_name = update.message.document.file_name
+        # Make message
+        msg = make_dict_message(update, f"Attached document: {file_name}")
+        # Document information
+        msg['document'] = {'file_id': update.message.document.file_id, 'file_name': file_name}
+        # Add message in queue text
+        self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
-            # Get file id picture big size
-            file_id = update.message.document.file_id
-            newFile = context.bot.get_file(file_id)
-            # Get filename
-            file_name = update.message.document.file_name
-            # Add text
-            text = f"Attached document: {file_name}"
-            # Attention chat in absolute value !!!!!!!!!!!!!
-            folder_name = str(chat_id)[1:]
-            folder_record = self.recording[chat_id]['folder_record']
-            # Path document
-            document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
-            # Download the document
-            newFile.download(document)
-            # Make message
-            msg = make_dict_message(update, text)
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
-            self.writing(context, chat_id, msg)
+            # Write message
+            self.writing(context.bot, chat_id, msg)
+
+    def save_foto(self, bot, chat_id, msg):
+        # Get file id picture big size
+        file_id = msg['photo']
+        newFile = bot.get_file(file_id)
+        # Get filename
+        # https://stackoverflow.com/questions/10552188/python-split-url-to-find-image-name-and-extension
+        picture_page = newFile.file_path
+        disassembled = urlparse(picture_page)
+        file_name = basename(disassembled.path)
+        # Write text
+        text = f"Attached photo {file_name}"
+        if msg['text']:
+            text+= f" - Caption: {msg['text']}"
+        msg['text'] = text
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
+        folder_record = self.recording[chat_id]['folder_record']
+        # Path document
+        document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
+        # Download the document
+        newFile.download(document)
+        return msg
 
     def record_photo(self, update, context):
         # Filter and update data channel
         if self.record_filter(update, context):
             return
         chat_id = update.effective_chat.id
+        # Make message
+        msg = make_dict_message(update, update.message.caption)
+        # Add photo message information
+        msg['photo'] = update.message.photo[-1]
+        # Add message in queue text
+        self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
         if self.recording[chat_id]['status'] in [WRITING]:
-            # Get file id picture big size
-            file_id = update.message.photo[-1]
-            newFile = context.bot.get_file(file_id)
-            # Get filename
-            # https://stackoverflow.com/questions/10552188/python-split-url-to-find-image-name-and-extension
-            picture_page = newFile.file_path
-            disassembled = urlparse(picture_page)
-            file_name = basename(disassembled.path)
-            # Write text
-            text = f"Attached photo {file_name}"
-            if update.message.caption:
-                text+= f" - Caption: {update.message.caption}"
-            # Attention chat in absolute value !!!!!!!!!!!!!
-            folder_name = str(chat_id)[1:]
-            folder_record = self.recording[chat_id]['folder_record']
-            # Path document
-            document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
-            # Download the document
-            newFile.download(document)
-            # Make message
-            msg = make_dict_message(update, text)
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
-            self.writing(context, chat_id, msg)
+            # Write message
+            self.writing(context.bot, chat_id, msg)
 
     def record(self, update, context):
         #if update.edit_message is not None:
@@ -634,11 +644,17 @@ class Record:
             text = "🔥 This chat getting *hot* 🔥\n📼 Do you want *record* this chat? 📼"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, self.cb_start, 'false')
 
-    def writing(self, context, chat_id, msg):
+    def writing(self, bot, chat_id, msg):
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
         folder_record = self.recording[chat_id]['folder_record']
         file_name = self.recording[chat_id]['file_name']
+        # Save photo if is included in msg
+        if 'document' in msg:
+            self.save_document(bot, chat_id, msg)
+        # Save photo if is included in msg
+        if 'photo' in msg:
+            self.save_foto(bot, chat_id, msg)
         # Append new line on file
         with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "a") as f:
             data = [str(msg[name]) for name in MSG_TEXT_ORDER]
@@ -647,6 +663,8 @@ class Record:
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
 
     def init_record(self, context, chat_id):
+        # log status
+        logger.info(f"Chat {chat_id} in INITIALIZATION...")
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
         last_record = self.recording[chat_id]['msgs'][-1]
@@ -672,14 +690,12 @@ class Record:
             f.write(f"{self.separator}".join(MSG_TEXT_ORDER) + f"\n")
             # Copy all messages
             for msg in self.recording[chat_id]['msgs']:
-                data = [str(msg[name]) for name in MSG_TEXT_ORDER]
-                f.write(f"{self.separator}".join(data) + f"\n")
+                # Save all old messages
+                self.writing(context.bot, chat_id, msg)
         # log status
-        logger.info(f"Chat {chat_id} in WRITING")
+        logger.info(f"Chat {chat_id} in INITIALIZATION... DONE!")
 
     def idle(self, bot, chat_id):
-        # Clear message list
-        self.recording[chat_id]['msgs'].clear()
         # log status
         logger.info(f"Chat {chat_id} in IDLE")
         # Extract msgs
