@@ -40,7 +40,7 @@ from telegram.ext import (Updater,
                           Filters,
                           CallbackContext,
                           ConversationHandler)
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError, ChatAction
 import logging
 from datetime import datetime, timedelta
 import shutil
@@ -343,6 +343,9 @@ class Record:
             del context.user_data[keyID]
 
     def send_record(self, bot, chat_id, folder_chat, folder_download):
+        # Action message
+        bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
+        # Make path
         path_document = f"{self.records_folder}/{folder_chat}/{folder_download}"
         # Document info
         chat = bot.getChat("-" + folder_chat)
