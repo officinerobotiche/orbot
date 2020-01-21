@@ -558,11 +558,11 @@ class Record:
     def init_record(self, context, chat_id):
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
-        first_record = self.recording[chat_id]['msgs'][0]
+        last_record = self.recording[chat_id]['msgs'][-1]
         # Make new folder and file name
-        folder_record = str(first_record['date'].timestamp()).split('.')[0]
+        folder_record = str(last_record['date'].timestamp()).split('.')[0]
         self.recording[chat_id]['folder_record'] = folder_record
-        file_name = str(first_record['date']) + "." + self.extension
+        file_name = str(last_record['date']) + "." + self.extension
         self.recording[chat_id]['file_name'] = file_name
         # Make chat folder if not exist
         if not os.path.isdir(f"{self.records_folder}/{folder_name}"):
