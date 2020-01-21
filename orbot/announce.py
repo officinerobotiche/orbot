@@ -92,16 +92,19 @@ class Announce:
             context.bot.send_message(chat_id=chat_id, text="You are not admin of this chat, you cannot announce messages", parse_mode='Markdown')
             return
         message = ""
-        if update.message.reply_to_message:
-            photo = update.message.reply_to_message.photo[-1] if update.message.reply_to_message.photo else []
+        reply_message = update.message.reply_to_message
+        if reply_message:
+            photo = reply_message.photo[-1] if reply_message.photo else []
         else:
             photo = []
-        message_caption = update.message.reply_to_message.caption if update.message.reply_to_message is not None else ""
-        message_reply = update.message.reply_to_message.text if update.message.reply_to_message is not None else ""
+        message_caption = reply_message.caption if reply_message is not None else ""
+        message_reply = reply_message.text if reply_message is not None else ""
         message_text = " ".join(context.args) if context.args else ""
         if not message_reply and not message_text and not message_caption and not photo:
             context.bot.send_message(chat_id=chat_id, text="Format command:\n/announce [message]", parse_mode='Markdown')
             return
+        # Reply markup if included
+        rm = reply_message.reply_markup if reply_message else None
         # Generate ID and seperate value from command
         keyID = str(uuid4())
         # Store value
@@ -112,7 +115,7 @@ class Announce:
                 message += f": \"{message_reply}\""
         else:
             message = message_reply
-        context.user_data[keyID] = {'message': message, 'main_chat': chat_id, 'photo': photo}
+        context.user_data[keyID] = {'message': message, 'main_chat': chat_id, 'photo': photo, 'reply_markup': rm}
         # Check if set default channel
         def_ch = self.settings['config'].get('dch', None)
         if def_ch is not None:
@@ -128,7 +131,11 @@ class Announce:
                     buttons += [InlineKeyboardButton(icons + chat.title, callback_data=f"AN_SELECT {keyID} {chat_id}")]
             # Footer button
             footer_button = InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")
+            print(rm.inline_keyboard)
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=footer_button))
+            if context.user_data[keyID]['reply_markup'] is not None:
+                reply_markup.inline_keyboard = context.user_data[keyID]['reply_markup'].inline_keyboard + reply_markup.inline_keyboard
+            print(reply_markup)
             message = f"Message to announce:\n{context.user_data[keyID]['message']}"
         # Send message
         send_message(update.effective_user.id, context, keyID, reply_markup)
@@ -158,10 +165,12 @@ class Announce:
         # Store the type of message to announce
         context.user_data[keyID]['chat_id'] = data[2]
         message, reply_markup = self.type_announce(update, context, keyID)
+        if context.user_data[keyID]['reply_markup'] is not None:
+            reply_markup.inline_keyboard = context.user_data[keyID]['reply_markup'].inline_keyboard + reply_markup.inline_keyboard
         # Extract chat id
         edit_message(update, context, keyID, message, reply_markup)
 
-    def sendAnnounce(self, update, context, chat_id):
+    def sendAnnounce(self, update, context, chat_id, rm):
         query = update.callback_query
         data = query.data.split()
         # Extract keyID, chat_id and title
@@ -172,7 +181,7 @@ class Announce:
             if data[2] == 'PIN':
                 pin_message = True
         #Send message
-        msg = send_message(chat_id, context, keyID, None)
+        msg = send_message(chat_id, context, keyID, rm)
         #try:
         #    msg = context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown', disable_notification=True)
         #except TelegramError:
@@ -192,9 +201,10 @@ class Announce:
         chat_id = context.user_data[keyID]['chat_id']
         main_chat = context.user_data[keyID]['main_chat']
         photo = context.user_data[keyID]['photo']
+        rm = context.user_data[keyID]['reply_markup']
         chat = context.bot.getChat(chat_id)
         #Send message
-        msg = self.sendAnnounce(update, context, chat_id)
+        msg = self.sendAnnounce(update, context, chat_id, rm)
         context.bot.forward_message(chat_id=update.effective_user.id, from_chat_id=chat_id, message_id=msg.message_id)
         logger.info(f"Announce message on {chat.title}")
         # Check forward in all chats

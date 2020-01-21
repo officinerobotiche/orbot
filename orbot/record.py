@@ -408,6 +408,10 @@ class Record:
             text = f"Do you want {type_message} this chat?\n"
             text += f"_[You can also use #start and #stop in your message]_"
             self.recording[chat_id]['job_player'] = Autoreply(self.updater, context, chat_id, 'REC_PLAYER', text, self.cb_player, f'false {control}', keyID=keyID)
+        else:
+            text = "😅 *Ops!*\nI'm waiting your reply in another message"
+            # Send message
+            context.bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
 
     @check_key_id('Error message')
     def player_control(self, update, context):
