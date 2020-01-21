@@ -193,6 +193,9 @@ class Record:
         dp.add_handler(photo_handler)
         document_handler = MessageHandler(Filters.document, self.record_document)
         dp.add_handler(document_handler)
+        # Query player
+        dp.add_handler(CommandHandler('player', self.player))
+        dp.add_handler(CallbackQueryHandler(self.player_control, pattern='REC_PLAYER'))
         # Query messages
         dp.add_handler(CommandHandler('records', self.records))
         dp.add_handler(CallbackQueryHandler(self.rec_folder, pattern='REC_DATA'))
@@ -201,6 +204,22 @@ class Record:
         dp.add_handler(CallbackQueryHandler(self.start, pattern='REC_START'))
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
+
+    def add_text(self, update, context):
+        chat_id = update.effective_chat.id
+        # Text message
+        text = update.message.text
+        # Make message
+        msg = make_dict_message(update, text)
+        # Recording funcions
+        if self.recording[chat_id]['status'] in [WRITING]:
+            # Add message in queue text
+            self.recording[chat_id]['msgs'].append(msg)
+            self.writing(context, chat_id, msg)
+        else:
+            # Add message in queue text
+            self.recording[chat_id]['msgs'].append(msg)
+        return text
 
     def close_all_records(self, bot):
         for chat_id in self.recording:
@@ -349,7 +368,6 @@ class Record:
         if os.path.isfile(f"{path_document}/{filename}.zip"):
             os.remove(f"{path_document}/{filename}.zip")
 
-
     @check_key_id('Error message')
     def rec_cancel(self, update, context):
         query = update.callback_query
@@ -361,6 +379,74 @@ class Record:
         # edit message
         query.edit_message_text(text="<b>Abort</b>", parse_mode='HTML')
 
+    @rtype(['channel'])
+    def player(self, update, context):
+        chat_id = update.effective_chat.id
+        # Filter and update data channel
+        if self.record_filter(update, context):
+            return
+        # Add text
+        self.add_text(update, context)
+        # Open an ask box only if is not in wait
+        if self.recording[chat_id]['status'] not in [WAIT_START, WAIT_STOP]:
+            if self.recording[chat_id]['status'] == IDLE:
+                control = "record"
+                self.recording[chat_id]['status'] = WAIT_START
+                type_message = "*RECORD*"
+            elif self.recording[chat_id]['status'] == WRITING:
+                control = "stop"
+                self.recording[chat_id]['status'] = WAIT_STOP
+                type_message = "*STOP*"
+            else:
+                control = "ERROR"
+                type_message = control
+            # Generate ID and seperate value from command
+            keyID = str(uuid4())
+            # Store value
+            context.user_data[keyID] = {'control': control, 'chat_id': chat_id}
+            text = f"Do you want {type_message} this chat?\n"
+            text += f"You can also use #start and #stop in your message"
+            self.recording[chat_id]['job_player'] = Autoreply(self.updater, context, chat_id, 'REC_PLAYER', text, self.cb_player, f'false {control}', keyID=keyID)
+
+    @check_key_id('Error message')
+    def player_control(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['chat_id']
+        # Start controller callback
+        self.cb_player(context, query.message.message_id, chat_id, data)
+        # remove key from user_data list
+        del context.user_data[keyID]
+
+    def cb_player(self, context, message_id, chat_id, data):
+        # Extract keyID
+        keyID = data[1]
+        # Get type control
+        out = data[2].split()
+        if len(out) > 1:
+            control = out[1]
+        else:
+            control = context.user_data[keyID]['control']
+        status = out[0]
+        # Stop the autoreply timer
+        if chat_id in self.recording:
+            if 'job_player' in self.recording[chat_id]:
+                self.recording[chat_id]['job_player'].stop()
+            # Extract status record
+            logger.info(f"player status {control} {status}")
+            if control == 'record':
+                data = ['REC_START', keyID, status]
+                self.cb_start(context, message_id, chat_id, data)
+            elif control == 'stop':
+                # Fix sen message for stop
+                data = ['REC_STOP', keyID, status]
+                self.cb_stop(context, message_id, chat_id, data)
+        else:
+            text = "Error message"
+            context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            
     def job_timer_reset(self, chat_id):
         # Stop the timer
         self.job_timer_stop(chat_id)
@@ -488,19 +574,8 @@ class Record:
         # Filter and update data channel
         if self.record_filter(update, context):
             return
-        chat_id = update.effective_chat.id
-        # Text message
-        text = update.message.text
-        # Make message
-        msg = make_dict_message(update, text)
-        # Recording funcions
-        if self.recording[chat_id]['status'] in [WRITING]:
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
-            self.writing(context, chat_id, msg)
-        else:
-            # Add message in queue text
-            self.recording[chat_id]['msgs'].append(msg)
+        # Add text
+        text = self.add_text(update, context)
         # https://python-telegram-bot.readthedocs.io/en/latest/telegram.messageentity.html
         # entities = update.message.parse_entities()
         # Extract all hashtags
@@ -518,6 +593,8 @@ class Record:
             text = "📼 Do you want *record* this chat? 📼"
             self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_START', text, self.cb_start, 'false')
         elif stop and self.recording[chat_id]['status'] not in [IDLE, WAIT_START, WAIT_STOP]:
+            # Wait reply
+            self.recording[chat_id]['status'] = WAIT_STOP
             # Remove and stop the timer
             self.job_timer_stop(chat_id)
             self.job_timer_delete(chat_id)
@@ -615,11 +692,13 @@ class Record:
     def timer_stop(self, context: CallbackContext):
         # Extract chat ids
         chat_id = context.job.context
-        # Wait reply
-        self.recording[chat_id]['status'] = WAIT_STOP
-        # Send message
-        text = "*TOK TOK* There is anyone here?\n🚫 Do you want *stop* now? 🚫"
-        self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_TIMER_STOP', text, self.cb_stop, 'true', keyID=chat_id)
+        logger.info(f"Timeout timer")
+        if self.recording[chat_id]['status'] in [WRITING]:
+            # Wait reply
+            self.recording[chat_id]['status'] = WAIT_STOP
+            # Send message
+            text = "*TOK TOK* There is anyone here?\n🚫 Do you want *stop* now? 🚫"
+            self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_TIMER_STOP', text, self.cb_stop, 'true', keyID=chat_id)
 
     @check_key_id('Error message')
     def start(self, update, context):
@@ -640,6 +719,7 @@ class Record:
                 self.recording[chat_id]['job_autoreply'].stop()
             # Extract status record
             status = True if data[2] == 'true' else False
+            logger.info(f"start status {status}")
             if status:
                 # Start write mode
                 self.init_record(context, chat_id)
@@ -726,6 +806,7 @@ class Record:
                 text = f"🛑 Recording *stop*!"
                 context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
+                self.recording[chat_id]['status'] = WRITING
                 # Start timer
                 self.job_timer_reset(chat_id)
                 # Send the message
