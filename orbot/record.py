@@ -28,7 +28,7 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
+import json
 import re
 from uuid import uuid1, uuid4
 from collections import deque
@@ -41,13 +41,14 @@ from telegram.ext import (Updater,
                           CallbackContext,
                           ConversationHandler)
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError, ChatAction
+from telegram.error import BadRequest
 import logging
 from datetime import datetime, timedelta
 import shutil
 from urllib.parse import urlparse
 from os.path import splitext, basename
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record, save_config
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ class Autoreply:
         # Interval update message
         self.interval = interval
         # Make control buttons
-        msg = self.ctrl_buttons(context, chat_id, keyID, type, text)
+        msg = self.ctrl_buttons(context.bot, chat_id, keyID, type, text)
         # Initialize the context to share
         data_timer = {'timer': self.time,
                       'message': msg.message_id,
@@ -101,7 +102,7 @@ class Autoreply:
         text = data_timer['text']
         type_cb = data_timer['type_cb']
         # Update control buttons and text
-        self.ctrl_buttons(context, chat_id, keyID, type_cb, f"{text} _({timer}s left)_", message_id)
+        self.ctrl_buttons(context.bot, chat_id, keyID, type_cb, f"{text} _({timer}s left)_", message_id)
         # Decrease timer
         context.job.context['timer'] -= self.interval
         # If timer left remove timer and send a message
@@ -110,25 +111,26 @@ class Autoreply:
             # Send the message
             func_timeout = data_timer['func_timeout']
             data = [type_cb, keyID, data_timer['data']]
-            func_timeout(context, message_id, chat_id, data)
+            func_timeout(context.bot, message_id, chat_id, data)
 
-    def ctrl_buttons(self, context, chat_id, keyID, type_cb, message, edit_msg=None):
+    def ctrl_buttons(self, bot, chat_id, keyID, type_cb, message, edit_msg=None):
         yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
         no = InlineKeyboardButton("❌", callback_data=f"{type_cb} {keyID} false")
         reply_markup = InlineKeyboardMarkup(build_menu([yes, no], 2))
         if edit_msg is not None:
-            context.bot.edit_message_text(chat_id=chat_id,
+            bot.edit_message_text(chat_id=chat_id,
                                           message_id=edit_msg,
                                           text=message,
                                           parse_mode='Markdown',
                                           reply_markup=reply_markup)
             return None
         else:
-            return context.bot.send_message(chat_id=chat_id,
+            return bot.send_message(chat_id=chat_id,
                                            text=message,
                                            parse_mode='Markdown',
                                            reply_markup=reply_markup)
 
+RECORDS_FILE = "records.json"
 IDLE, WAIT_START, WAIT_STOP, WRITING = range(4)
 RECORDING = 'RECORDING'
 MSG_TEXT_ORDER = ['date', 'user_id', 'firstname', 'msg_id', 'reply_id', 'forward_from', 'text']
@@ -182,6 +184,19 @@ class Record:
         if not os.path.isdir(self.records_folder):
             os.mkdir(self.records_folder)
             logger.info(f"Directory {self.records_folder} created")
+        # Restore all conversations
+        size_record_chat = int(records.get('msgs', self.size_record_chat))
+        if os.path.isfile(f"{self.records_folder}/{RECORDS_FILE}"):
+            with open(f"{self.records_folder}/{RECORDS_FILE}") as stream:
+                data = json.load(stream)
+            for chat_id in data:
+                logger.info(f"Load {chat_id} records")
+                status = data[chat_id]['status']
+                # Convert all timestamps in datetime
+                for msg in data[chat_id]['msgs']:
+                    msg['date'] = datetime.fromtimestamp(msg['date'])
+                # Restore all recording
+                self.recording[int(chat_id)] = {'status': status, 'msgs': deque(data[chat_id]['msgs'], maxlen=size_record_chat)}
         # Job queue
         self.job = self.updater.job_queue
         # Get the dispatcher to register handlers
@@ -204,6 +219,22 @@ class Record:
         dp.add_handler(CallbackQueryHandler(self.start, pattern='REC_START'))
         dp.add_handler(CallbackQueryHandler(self.stop, pattern='REC_STOP'))
         dp.add_handler(CallbackQueryHandler(self.timer_stop_cb, pattern='REC_TIMER_STOP'))
+        # Restart all records
+        for chat_id in self.recording:
+            if self.recording[chat_id]['status'] in [WRITING, WAIT_STOP]:
+                self.recording[chat_id]['folder_record'] = data[str(chat_id)]['folder_record']
+                self.recording[chat_id]['file_name'] = data[str(chat_id)]['file_name']
+                message_id = data[str(chat_id)]['edit_msg']
+                # Start timer
+                self.job_timer_start(chat_id)
+                # Message to send
+                try:
+                    text = f"*RESTORE* 📼 *Recording*..."
+                    self.updater.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                except BadRequest:
+                    pass
+            if self.recording[chat_id]['status'] in [WAIT_START]:
+                self.recording[chat_id]['status'] = IDLE
 
     def add_text(self, update, context):
         chat_id = update.effective_chat.id
@@ -220,15 +251,28 @@ class Record:
         return text
 
     def close_all_records(self, bot):
+        data = {}
+        infobot = bot.get_me()
         for chat_id in self.recording:
+            # Store status
+            data[chat_id] = {'status': self.recording[chat_id]['status']}
+            # Close all records
             if self.recording[chat_id]['status'] not in [IDLE]:
-                # Set in idle mode and wait a new record
-                self.idle(bot, chat_id)
+                # Save recording informations
+                data[chat_id]['folder_record'] = self.recording[chat_id]['folder_record']
+                data[chat_id]['file_name'] = self.recording[chat_id]['file_name']
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
-                text = f"🛑 Recording *stop*!"
-                bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+                text = f"💤 Switch off *{infobot.first_name}*"
+                msg = bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+                data[chat_id]['edit_msg'] = msg.message_id
+            # Store records
+            for msg in self.recording[chat_id]['msgs']:
+                msg['date'] = int(msg['date'].timestamp())
+            data[chat_id]['msgs'] = list(self.recording[chat_id]['msgs'])
+        # Save configuration
+        save_config(f"{self.records_folder}/{RECORDS_FILE}", data)
 
     def get_folders(self, context, user_id, keyID):
         buttons = []
@@ -424,21 +468,18 @@ class Record:
         # Extract keyID
         keyID = data[1]
         chat_id = context.user_data[keyID]['chat_id']
+        control = context.user_data[keyID]['control']
+        data[2] = f'{data[2]} {control}'
         # Start controller callback
-        self.cb_player(context, query.message.message_id, chat_id, data)
+        self.cb_player(context.bot, query.message.message_id, chat_id, data)
         # remove key from user_data list
         del context.user_data[keyID]
 
-    def cb_player(self, context, message_id, chat_id, data):
+    def cb_player(self, bot, message_id, chat_id, data):
         # Extract keyID
         keyID = data[1]
         # Get type control
-        out = data[2].split()
-        if len(out) > 1:
-            control = out[1]
-        else:
-            control = context.user_data[keyID]['control']
-        status = out[0]
+        status, control = data[2].split()
         # Stop the autoreply timer
         if chat_id in self.recording:
             if 'job_player' in self.recording[chat_id]:
@@ -447,14 +488,14 @@ class Record:
             logger.info(f"player status {control} {status}")
             if control == 'record':
                 data = ['REC_START', keyID, status]
-                self.cb_start(context, message_id, chat_id, data)
+                self.cb_start(bot, message_id, chat_id, data)
             elif control == 'stop':
                 # Fix sen message for stop
                 data = ['REC_STOP', keyID, status]
-                self.cb_stop(context, message_id, chat_id, data)
+                self.cb_stop(bot, message_id, chat_id, data)
         else:
             text = "Error message"
-            context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             
     def job_timer_reset(self, chat_id):
         # Stop the timer
@@ -692,7 +733,7 @@ class Record:
         # log status
         logger.info(f"Chat {chat_id} in WRITING {msg['text']}")
 
-    def init_record(self, context, chat_id):
+    def init_record(self, bot, chat_id):
         # log status
         logger.info(f"Chat {chat_id} in INITIALIZATION...")
         # Attention chat in absolute value !!!!!!!!!!!!!
@@ -721,7 +762,7 @@ class Record:
             # Copy all messages
             for msg in self.recording[chat_id]['msgs']:
                 # Save all old messages
-                self.writing(context.bot, chat_id, msg)
+                self.writing(bot, chat_id, msg)
         # log status
         logger.info(f"Chat {chat_id} in INITIALIZATION... DONE!")
 
@@ -731,6 +772,9 @@ class Record:
         # Extract msgs
         # Attention chat in absolute value !!!!!!!!!!!!!
         folder_name = str(chat_id)[1:]
+        if 'folder_record' not in self.recording[chat_id]:
+            logger.warning(f"No \'folder_record\' in recording")
+            return
         folder_record = self.recording[chat_id]['folder_record']
         # Send recordered registration
         self.send_record(bot, chat_id, folder_name, folder_record)
@@ -755,21 +799,20 @@ class Record:
         keyID = data[1]
         chat_id = context.user_data[keyID]['chat_id']
         # Start controller callback
-        self.cb_start(context, query.message.message_id, chat_id, data)
+        self.cb_start(context.bot, query.message.message_id, chat_id, data)
         # remove key from user_data list
         del context.user_data[keyID]
 
-    def cb_start(self, context, message_id, chat_id, data):
+    def cb_start(self, bot, message_id, chat_id, data):
         # Stop the autoreply timer
         if chat_id in self.recording:
             if 'job_autoreply' in self.recording[chat_id]:
                 self.recording[chat_id]['job_autoreply'].stop()
             # Extract status record
             status = True if data[2] == 'true' else False
-            logger.info(f"start status {status}")
             if status:
                 # Start write mode
-                self.init_record(context, chat_id)
+                self.init_record(bot, chat_id)
                 # Start timer
                 self.job_timer_start(chat_id)
                 # Initialize writing mode
@@ -784,7 +827,7 @@ class Record:
                     job.schedule_removal()  # Remove this job completely
                 # Message to send
                 text = f"📼 *Recording*..."
-                context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
                 self.recording[chat_id]['status'] = IDLE
                 # Clear wait autorestart
@@ -793,7 +836,7 @@ class Record:
                         self.recording[chat_id]['delay_autorestart'] = True
                 # Send the message
                 text = f"Ok next time!"
-                context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             # Clear autorestart status
             if 'autorestart' in self.recording[chat_id]:
                 self.recording[chat_id]['autorestart'] = False
@@ -805,7 +848,7 @@ class Record:
                 self.recording[chat_id]['job_delay_autorestart'] = self.job.run_once(self.reset_delay_autorestart, d_start, context=chat_id)
         else:
             text = "Error message"
-            context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
 
     def reset_delay_autorestart(self, context: CallbackContext):
         # Extract chat ids
@@ -823,7 +866,7 @@ class Record:
         keyID = data[1]
         chat_id = context.user_data[keyID]['chat_id']
         # Run callback stop
-        self.cb_stop(context, query.message.message_id, chat_id, data)
+        self.cb_stop(context.bot, query.message.message_id, chat_id, data)
         # remove key from user_data list
         del context.user_data[keyID]
 
@@ -832,9 +875,9 @@ class Record:
         data = query.data.split()
         chat_id = int(data[1])
         # Run callback stop
-        self.cb_stop(context, query.message.message_id, chat_id, data)
+        self.cb_stop(context.bot, query.message.message_id, chat_id, data)
 
-    def cb_stop(self, context, message_id, chat_id, data):
+    def cb_stop(self, bot, message_id, chat_id, data):
         # Stop the autoreply timer
         if chat_id in self.recording:
             if 'job_autoreply' in self.recording[chat_id]:
@@ -846,19 +889,19 @@ class Record:
                 self.job_timer_stop(chat_id)
                 self.job_timer_delete(chat_id)
                 # Set in idle mode and wait a new record
-                self.idle(context.bot, chat_id)
+                self.idle(bot, chat_id)
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
                 text = f"🛑 Recording *stop*!"
-                context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
                 self.recording[chat_id]['status'] = WRITING
                 # Start timer
                 self.job_timer_reset(chat_id)
                 # Send the message
                 text = f"📼 *Recording*..."
-                context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
         else:
             text = "Error message"
-            context.bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
