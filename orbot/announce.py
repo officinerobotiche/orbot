@@ -131,13 +131,11 @@ class Announce:
                     buttons += [InlineKeyboardButton(icons + chat.title, callback_data=f"AN_SELECT {keyID} {chat_id}")]
             # Footer button
             footer_button = InlineKeyboardButton("Cancel", callback_data=f"AN_CANCEL {keyID}")
-            print(rm.inline_keyboard)
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=footer_button))
-            if context.user_data[keyID]['reply_markup'] is not None:
-                reply_markup.inline_keyboard = context.user_data[keyID]['reply_markup'].inline_keyboard + reply_markup.inline_keyboard
-            print(reply_markup)
             message = f"Message to announce:\n{context.user_data[keyID]['message']}"
         # Send message
+        if context.user_data[keyID]['reply_markup'] is not None:
+            reply_markup.inline_keyboard = context.user_data[keyID]['reply_markup'].inline_keyboard + reply_markup.inline_keyboard
         send_message(update.effective_user.id, context, keyID, reply_markup)
 
     def type_announce(self, update, context, keyID):
