@@ -287,6 +287,26 @@ class Channels:
             return f"[" + ",".join(icons) + "] "
         return ""
 
+    def get_channels_name(self, context):
+        bot = context.bot
+        # Sort channels
+        channels = sorted(self.settings['channels'].items(), key=lambda kv:(bot.getChat(kv[0]).title, kv[1]))
+        if not channels:
+            return "*No channels*"
+        text = "*Channels:*\n"
+        for chat_id, _ in channels:
+            chat = bot.getChat(chat_id)
+            # Load icon type channel
+            icon_string = self.getIcons(context, chat_id)
+            text += f" - [{icon_string}] {chat.title}\n"
+        if self.groups:
+            text += "*New groups:*\n"
+        for chat_id in self.groups:
+            chat = context.bot.getChat(chat_id)
+            isChannel = '📢' if chat.type == 'channel' else ''
+            text += f" - [{isChannel}] {chat.title}\n"
+        return text
+
     @filter_channel
     @restricted
     def ch_list(self, update, context):
@@ -313,6 +333,15 @@ class Channels:
         context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
         # Store value
         context.user_data[keyID] = {}
+
+    def get_channels_config(self, context, keyID):
+        messages = {}
+        type_chat = Channels.TYPE[context.user_data[keyID].get('type', "0")]
+        messages['CH_TYPE'] = type_chat.get('icon', '👥') + " Type"
+        messages['CH_ADMIN'] = ("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin"
+        messages['CH_REC'] = ("✅" if context.user_data[keyID].get('records', True) else "❌ no") + " recording"
+        messages['CH_BETA'] = ("✅" if context.user_data[keyID].get('beta', False) else "❌") + " 🅱️eta"
+        return messages
 
     @check_key_id('Error message')
     def ch_edit(self, update, context):
@@ -341,34 +370,28 @@ class Channels:
         if chat.type == 'channel':
             context.user_data[keyID]['type'] = "10"
         # Make buttons
-        type_chat = Channels.TYPE[context.user_data[keyID].get('type', "0")]
+        messages = self.get_channels_config(context, keyID)
         buttons = []
-        buttons += [InlineKeyboardButton("🔈 Notify",
-                                        callback_data=f"CH_NOTIFY {keyID}"),
-                   InlineKeyboardButton("🔗 Gen new link",
-                                        callback_data=f"CH_LINK {keyID}")]
+        buttons += [InlineKeyboardButton("🔈 Notify", callback_data=f"CH_NOTIFY {keyID}"),
+                    InlineKeyboardButton("🔗 Gen new link", callback_data=f"CH_LINK {keyID}")]
         if chat.type != 'channel':
-            buttons += [InlineKeyboardButton(type_chat.get('icon', '👥') + " Type",
-                                             callback_data=f"CH_TYPE {keyID}"),
-                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin",
-                                             callback_data=f"CH_ADMIN {keyID}"),
-                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('records', True) else "❌ no") + " recording",
-                                             callback_data=f"CH_REC {keyID}"),
-                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('beta', False) else "❌") + " 🅱️eta",
-                                             callback_data=f"CH_BETA {keyID}")]
-        buttons += [InlineKeyboardButton("🗂 Store",
-                                        callback_data=f"CH_SAVE {keyID}"),
-                   InlineKeyboardButton("🧹 Remove",
-                                        callback_data=f"CH_REMOVE {keyID}")]
-        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
+            buttons += [InlineKeyboardButton(messages['CH_TYPE'], callback_data=f"CH_TYPE {keyID}"),
+                        InlineKeyboardButton(messages['CH_ADMIN'], callback_data=f"CH_ADMIN {keyID}"),
+                        InlineKeyboardButton(messages['CH_REC'], callback_data=f"CH_REC {keyID}"),
+                        InlineKeyboardButton(messages['CH_BETA'], callback_data=f"CH_BETA {keyID}")]
+        buttons += [InlineKeyboardButton("🗂 Store", callback_data=f"CH_SAVE {keyID}"),
+                    InlineKeyboardButton("🧹 Remove", callback_data=f"CH_REMOVE {keyID}")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID} {chat_id}")))
         # Make message
-        message = f"{chat.title}\n"
-        message += f"{chat.invite_link}\n" if chat.invite_link is not None else "Link not available!\n"
-        for k, v in context.user_data[keyID].items():
-            if k == 'type':
-                v = Channels.TYPE[v]['name']
-            message += f" - {k}={v}\n"
-        query.edit_message_text(text=message, reply_markup=reply_markup)
+        text = f"*{chat.title}*\n"
+        text += f" - *ID:* {chat_id}\n"
+        link = chat.invite_link if chat.invite_link is not None else "not available"
+        text += f" - *Link:* {link}\n"
+        # for k, v in context.user_data[keyID].items():
+        #    if k == 'type':
+        #        v = Channels.TYPE[v]['name']
+        #    text += f" - {k}={v}\n"
+        query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
 
     @check_key_id('Error message')
     def ch_link(self, update, context):
@@ -543,15 +566,20 @@ class Channels:
         # Save to CSV file
         save_config(self.settings_file, self.settings)
         # Make message
-        message = f"{chat.title} STORED!\n"
-        for k, v in context.user_data[keyID].items():
-            if k == 'type':
-                v = Channels.TYPE[v]['name']
-            message += f" - {k}={v}\n"
+        text = f"*Stored*\n"
+        # get messages
+        messages = self.get_channels_config(context, keyID)
+        # Make text
+        text += f"*{chat.title}*\n"
+        text += f" - *ID:* {chat_id}\n"
+        link = chat.invite_link if chat.invite_link is not None else "not available"
+        text += f" - *Link:* {link}\n"
+        for value in messages.values():
+            text += f" - {value}\n"
+        # edit message
+        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=message)
 
     @check_key_id('Error message')
     def ch_remove(self, update, context):
@@ -568,10 +596,12 @@ class Channels:
         if chat_id in self.groups:
             # Remove from groups list
             self.groups.remove(chat_id)
+        # edit message
+        text = f"*Removed*\n"
+        text += f"*{chat.title}*\n"
+        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=f"{chat.title} Removed")
 
     @check_key_id('Error message')
     def ch_cancel(self, update, context):
@@ -579,8 +609,23 @@ class Channels:
         data = query.data.split()
         # Extract keyID, chat_id
         keyID = data[1]
+        text = f"*Abort*\n"
+        if len(data) > 2:
+            chat_id = data[2]
+            chat = context.bot.getChat(chat_id)
+            # get messages
+            messages = self.get_channels_config(context, keyID)
+            # Make text
+            text += f"*{chat.title}*\n"
+            text += f" - *ID:* {chat_id}\n"
+            link = chat.invite_link if chat.invite_link is not None else "not available"
+            text += f" - *Link:* {link}\n"
+            for value in messages.values():
+                text += f" - {value}\n"
+        else:
+            text += self.get_channels_name(context)
+        # edit message
+        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text=f"Abort")
 # EOF
