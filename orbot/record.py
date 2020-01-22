@@ -28,6 +28,7 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from threading import Thread
 import json
 import re
 from uuid import uuid1, uuid4
@@ -56,6 +57,21 @@ logger = logging.getLogger(__name__)
 BETA = False
 START = 'start'
 STOP = 'stop'
+
+class Downloader(Thread):
+
+    def __init__(self, newFile, path, file_name):
+        super().__init__()
+        self.newFile = newFile
+        self.path = path
+        self.file_name = file_name
+        # https://www.bogotobogo.com/python/Multithread/python_multithreading_Daemon_join_method_threads.php
+        self.daemon = True
+
+    def run(self):
+        logger.info(f"Downloading... {self.file_name}")
+        self.newFile.download(self.path)
+        logger.info(f"Downloaded {self.file_name}")
 
 class Autoreply:
 
@@ -246,7 +262,7 @@ class Record:
         # Add message in queue text
         self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
-        if self.recording[chat_id]['status'] in [WRITING]:
+        if self.recording[chat_id]['status'] in [WRITING, WAIT_STOP]:
             # Write message on history
             self.writing(context.bot, chat_id, msg)
         return text
@@ -589,7 +605,8 @@ class Record:
         # Path document
         document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
         # Download the document
-        newFile.download(document)
+        doc = Downloader(newFile, document, file_name)
+        doc.start()
 
     def record_document(self, update, context):
         # Filter and update data channel
@@ -629,7 +646,8 @@ class Record:
         # Path document
         document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
         # Download the document
-        newFile.download(document)
+        doc = Downloader(newFile, document, file_name)
+        doc.start()
         return msg
 
     def record_photo(self, update, context):
