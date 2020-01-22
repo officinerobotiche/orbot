@@ -101,6 +101,7 @@ class Autoreply:
         keyID = data_timer['keyID']
         text = data_timer['text']
         type_cb = data_timer['type_cb']
+        user = context.bot.get_me()
         # Update control buttons and text
         self.ctrl_buttons(context.bot, chat_id, keyID, type_cb, f"{text} _({timer}s left)_", message_id)
         # Decrease timer
@@ -111,7 +112,7 @@ class Autoreply:
             # Send the message
             func_timeout = data_timer['func_timeout']
             data = [type_cb, keyID, data_timer['data']]
-            func_timeout(context.bot, message_id, chat_id, data)
+            func_timeout(context.bot, message_id, chat_id, data, user)
 
     def ctrl_buttons(self, bot, chat_id, keyID, type_cb, message, edit_msg=None):
         yes = InlineKeyboardButton("✅", callback_data=f"{type_cb} {keyID} true")
@@ -464,6 +465,7 @@ class Record:
     @check_key_id('Error message')
     def player_control(self, update, context):
         query = update.callback_query
+        user = query.from_user
         data = query.data.split()
         # Extract keyID
         keyID = data[1]
@@ -471,11 +473,11 @@ class Record:
         control = context.user_data[keyID]['control']
         data[2] = f'{data[2]} {control}'
         # Start controller callback
-        self.cb_player(context.bot, query.message.message_id, chat_id, data)
+        self.cb_player(context.bot, query.message.message_id, chat_id, data, user)
         # remove key from user_data list
         del context.user_data[keyID]
 
-    def cb_player(self, bot, message_id, chat_id, data):
+    def cb_player(self, bot, message_id, chat_id, data, user):
         # Extract keyID
         keyID = data[1]
         # Get type control
@@ -488,11 +490,11 @@ class Record:
             logger.info(f"player status {control} {status}")
             if control == 'record':
                 data = ['REC_START', keyID, status]
-                self.cb_start(bot, message_id, chat_id, data)
+                self.cb_start(bot, message_id, chat_id, data, user)
             elif control == 'stop':
                 # Fix sen message for stop
                 data = ['REC_STOP', keyID, status]
-                self.cb_stop(bot, message_id, chat_id, data)
+                self.cb_stop(bot, message_id, chat_id, data, user)
         else:
             text = "Error message"
             bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
@@ -794,16 +796,17 @@ class Record:
     @check_key_id('Error message')
     def start(self, update, context):
         query = update.callback_query
+        user = query.from_user
         data = query.data.split()
         # Extract keyID
         keyID = data[1]
         chat_id = context.user_data[keyID]['chat_id']
         # Start controller callback
-        self.cb_start(context.bot, query.message.message_id, chat_id, data)
+        self.cb_start(context.bot, query.message.message_id, chat_id, data, user)
         # remove key from user_data list
         del context.user_data[keyID]
 
-    def cb_start(self, bot, message_id, chat_id, data):
+    def cb_start(self, bot, message_id, chat_id, data, user):
         # Stop the autoreply timer
         if chat_id in self.recording:
             if 'job_autoreply' in self.recording[chat_id]:
@@ -826,7 +829,8 @@ class Record:
                     job.enabled = False  # Temporarily disable this job
                     job.schedule_removal()  # Remove this job completely
                 # Message to send
-                text = f"📼 *Recording*..."
+                text = f"📼 *Recording*...\n"
+                text += f"_[replied by {user.name}]_"
                 bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
                 self.recording[chat_id]['status'] = IDLE
@@ -835,7 +839,8 @@ class Record:
                     if self.recording[chat_id]['autorestart']:
                         self.recording[chat_id]['delay_autorestart'] = True
                 # Send the message
-                text = f"Ok next time!"
+                text = f"😉 Doesn't matter\n"
+                text += f"_[replied by {user.name}]_"
                 bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             # Clear autorestart status
             if 'autorestart' in self.recording[chat_id]:
@@ -861,23 +866,25 @@ class Record:
     @check_key_id('Error message')
     def stop(self, update, context):
         query = update.callback_query
+        user = query.from_user
         data = query.data.split()
         # Extract keyID
         keyID = data[1]
         chat_id = context.user_data[keyID]['chat_id']
         # Run callback stop
-        self.cb_stop(context.bot, query.message.message_id, chat_id, data)
+        self.cb_stop(context.bot, query.message.message_id, chat_id, data, user)
         # remove key from user_data list
         del context.user_data[keyID]
 
     def timer_stop_cb(self, update, context):
         query = update.callback_query
+        user = query.from_user
         data = query.data.split()
         chat_id = int(data[1])
         # Run callback stop
-        self.cb_stop(context.bot, query.message.message_id, chat_id, data)
+        self.cb_stop(context.bot, query.message.message_id, chat_id, data, user)
 
-    def cb_stop(self, bot, message_id, chat_id, data):
+    def cb_stop(self, bot, message_id, chat_id, data, user):
         # Stop the autoreply timer
         if chat_id in self.recording:
             if 'job_autoreply' in self.recording[chat_id]:
@@ -893,14 +900,16 @@ class Record:
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
-                text = f"🛑 Recording *stop*!"
+                text = f"🛑 Recording *stop*!\n"
+                text += f"_[replied by {user.name}]_"
                 bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
             else:
                 self.recording[chat_id]['status'] = WRITING
                 # Start timer
                 self.job_timer_reset(chat_id)
                 # Send the message
-                text = f"📼 *Recording*..."
+                text = f"📼 *Recording*...\n"
+                text += f"_[replied by {user.name}]_"
                 bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
         else:
             text = "Error message"
