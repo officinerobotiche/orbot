@@ -658,7 +658,7 @@ class Record:
         # Make message
         msg = make_dict_message(update, update.message.caption)
         # Add photo message information
-        msg['photo'] = update.message.photo[-1]
+        msg['photo'] = update.message.photo[-1].file_id
         # Add message in queue text
         self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
