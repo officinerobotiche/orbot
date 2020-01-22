@@ -34,5 +34,5 @@ from .orbot import ORbot
 from .orbot import get_version
 
 __author__ = "Raffaello Bonghi <raffaello.bonghi@officinerobotiche.it>"
-__version__ = "0.1.6"
+__version__ = "0.1.8"
 # EOF
