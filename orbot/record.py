@@ -385,6 +385,10 @@ class Record:
         chat_id = update.effective_chat.id
         # Filter and update data channel
         if self.record_filter(update, context):
+            if not self.settings['channels'][str(chat_id)].get('records', True):
+                text = "⛔️ I'm disabled here!"
+                # Send message
+                context.bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
             return
         # Add text
         self.add_text(update, context)
@@ -493,6 +497,25 @@ class Record:
         if BETA:
             if not self.settings['channels'][str(chat_id)].get('beta', False):
                 return True
+        # Don't register if chat is disabled
+        if not self.settings['channels'][str(chat_id)].get('records', True):
+            if chat_id in self.recording:
+                # Stop recording if enabled
+                if 'status' in self.recording[chat_id]:
+                    if self.recording[chat_id]['status'] not in [IDLE]:
+                        # Set in idle mode and wait a new record
+                        self.idle(context.bot, chat_id)
+                        # Set in idle mode
+                        self.recording[chat_id]['status'] = IDLE
+                        # Send message
+                        text = f"🛑 Recording *stop*!"
+                        context.bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+                # Clean chat if is already created
+                if 'msgs' in self.recording[chat_id]:
+                    self.recording[chat_id]['msgs'].clear()
+                # Remove record
+                del self.recording[chat_id]
+            return True
         # initialization recording chat
         records = self.settings['config'].get('records', {})
         if chat_id not in self.recording:
@@ -716,12 +739,13 @@ class Record:
         # Extract chat ids
         chat_id = context.job.context
         logger.info(f"Timeout timer")
-        if self.recording[chat_id]['status'] in [WRITING]:
-            # Wait reply
-            self.recording[chat_id]['status'] = WAIT_STOP
-            # Send message
-            text = "*TOK TOK* There is anyone here?\n🚫 Do you want *stop* now? 🚫"
-            self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_TIMER_STOP', text, self.cb_stop, 'true', keyID=chat_id)
+        if chat_id in self.recording:
+            if self.recording[chat_id]['status'] in [WRITING]:
+                # Wait reply
+                self.recording[chat_id]['status'] = WAIT_STOP
+                # Send message
+                text = "*TOK TOK* There is anyone here?\n🚫 Do you want *stop* now? 🚫"
+                self.recording[chat_id]['job_autoreply'] = Autoreply(self.updater, context, chat_id, 'REC_TIMER_STOP', text, self.cb_stop, 'true', keyID=chat_id)
 
     @check_key_id('Error message')
     def start(self, update, context):

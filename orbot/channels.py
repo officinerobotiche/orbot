@@ -111,6 +111,7 @@ class Channels:
         dp.add_handler(CallbackQueryHandler(self.ch_notify, pattern='CH_NOTIFY'))
         dp.add_handler(CallbackQueryHandler(self.ch_link, pattern='CH_LINK'))
         dp.add_handler(CallbackQueryHandler(self.ch_beta, pattern='CH_BETA'))
+        dp.add_handler(CallbackQueryHandler(self.ch_recording, pattern='CH_REC'))
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
         # on noncommand i.e message - echo the message on Telegram
         dp.add_handler(InlineQueryHandler(self.inlinequery))
@@ -272,6 +273,7 @@ class Channels:
         chat = context.bot.getChat(chat_id)
         level = self.settings['channels'][chat_id].get('type', "0")
         admin = self.settings['channels'][chat_id].get('admin', False)
+        records = self.settings['channels'][chat_id].get('records', True)
         beta = self.settings['channels'][chat_id].get('beta', False)
         icons = []
         icons = icons + ['📢'] if chat.type == 'channel' else icons
@@ -279,6 +281,7 @@ class Channels:
         if chat.type != 'channel':
             icons = icons + [icon_type] if icon_type else icons
         icons = icons + ['👑'] if admin else icons
+        icons = icons + ['⛔️'] if not records else icons
         icons = icons + ['🅱️'] if beta else icons
         if icons:
             return f"[" + ",".join(icons) + "] "
@@ -340,22 +343,23 @@ class Channels:
         # Make buttons
         type_chat = Channels.TYPE[context.user_data[keyID].get('type', "0")]
         buttons = []
+        buttons += [InlineKeyboardButton("🔈 Notify",
+                                        callback_data=f"CH_NOTIFY {keyID}"),
+                   InlineKeyboardButton("🔗 Gen new link",
+                                        callback_data=f"CH_LINK {keyID}")]
         if chat.type != 'channel':
             buttons += [InlineKeyboardButton(type_chat.get('icon', '👥') + " Type",
                                              callback_data=f"CH_TYPE {keyID}"),
                         InlineKeyboardButton(("✅" if context.user_data[keyID].get('admin', False) else "❌") + " Admin",
-                                             callback_data=f"CH_ADMIN {keyID}")]
-        buttons += [InlineKeyboardButton("🔈 Notify",
-                                        callback_data=f"CH_NOTIFY {keyID}"),
-                   InlineKeyboardButton("🔗 Gen new link",
-                                        callback_data=f"CH_LINK {keyID}"),
-                   InlineKeyboardButton("🗂 Store",
+                                             callback_data=f"CH_ADMIN {keyID}"),
+                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('records', True) else "❌ no") + " recording",
+                                             callback_data=f"CH_REC {keyID}"),
+                        InlineKeyboardButton(("✅" if context.user_data[keyID].get('beta', False) else "❌") + " 🅱️eta",
+                                             callback_data=f"CH_BETA {keyID}")]
+        buttons += [InlineKeyboardButton("🗂 Store",
                                         callback_data=f"CH_SAVE {keyID}"),
                    InlineKeyboardButton("🧹 Remove",
                                         callback_data=f"CH_REMOVE {keyID}")]
-        if chat.type != 'channel':
-            buttons += [InlineKeyboardButton(("✅" if context.user_data[keyID].get('beta', False) else "❌") + " 🅱️eta",
-                                             callback_data=f"CH_BETA {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID}")))
         # Make message
         message = f"{chat.title}\n"
@@ -483,6 +487,22 @@ class Channels:
                                         callback_data=f"CH_EDIT {keyID} beta=False")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
         query.edit_message_text(text=f"Set {chat.title} beta?", reply_markup=reply_markup)
+
+    @check_key_id('Error message')
+    def ch_recording(self, update, context):
+        query = update.callback_query
+        data = query.data.split()
+        # Extract keyID, chat_id and title
+        keyID = data[1]
+        chat_id = context.user_data[keyID]['id']
+        chat = context.bot.getChat(chat_id)
+        records = context.user_data[keyID].get('records', True)
+        buttons = [InlineKeyboardButton("✅ Yes " + ("[X]" if records else ""),
+                                        callback_data=f"CH_EDIT {keyID} records=True"),
+                    InlineKeyboardButton("❌ No " + ("" if records else "[X]"),
+                                        callback_data=f"CH_EDIT {keyID} records=False")]
+        reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2))
+        query.edit_message_text(text=f"Set {chat.title} to record data?", reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def ch_save(self, update, context):
