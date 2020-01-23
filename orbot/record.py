@@ -150,9 +150,9 @@ class Autoreply:
 RECORDS_FILE = "records.json"
 IDLE, WAIT_START, WAIT_STOP, WRITING = range(4)
 RECORDING = 'RECORDING'
-MSG_TEXT_ORDER = ['date', 'user_id', 'firstname', 'msg_id', 'reply_id', 'forward_from', 'text']
+MSG_TEXT_ORDER = ['date', 'user_id', 'firstname', 'msg_id', 'edit', 'reply_id', 'forward_from', 'text']
 
-def make_dict_message(update, text):
+def make_dict_message(update, text, edit=False):
     # Message ID
     msg_id = update.message.message_id
     # date message
@@ -175,7 +175,8 @@ def make_dict_message(update, text):
             'username': username,
             'text': text,
             'reply_id': reply_id,
-            'forward_from': forward_from}
+            'forward_from': forward_from,
+            'edit': edit}
     return msg
 
 
@@ -253,12 +254,12 @@ class Record:
             if self.recording[chat_id]['status'] in [WAIT_START]:
                 self.recording[chat_id]['status'] = IDLE
 
-    def add_text(self, update, context):
+    def add_text(self, update, context, edit=False):
         chat_id = update.effective_chat.id
         # Text message
         text = update.message.text
         # Make message
-        msg = make_dict_message(update, text)
+        msg = make_dict_message(update, text, edit)
         # Add message in queue text
         self.recording[chat_id]['msgs'].append(msg)
         # Recording funcions
@@ -682,16 +683,17 @@ class Record:
 
     @register
     def record(self, update, context):
-        #if update.edit_message is not None:
-        #    print(update.edit_message.text)
+        # If is an edited message overload standard message
+        edited_message = False
+        if update.edited_message:
+            edited_message = True
+            update.message = update.edited_message
         # print(update.message)
-        if update.message.reply_to_message:
-            print(update.message.reply_to_message.message_id)
         # Filter and update data channel
         if self.record_filter(update, context):
             return
         # Add text
-        text = self.add_text(update, context)
+        text = self.add_text(update, context, edited_message)
         # https://python-telegram-bot.readthedocs.io/en/latest/telegram.messageentity.html
         # entities = update.message.parse_entities()
         # Extract all hashtags
@@ -794,10 +796,10 @@ class Record:
         with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "x") as f:
             # Write header
             f.write(f"{self.separator}".join(MSG_TEXT_ORDER) + f"\n")
-            # Copy all messages
-            for msg in self.recording[chat_id]['msgs']:
-                # Save all old messages
-                self.writing(bot, chat_id, msg)
+        # Copy all messages
+        for msg in self.recording[chat_id]['msgs']:
+            # Save all old messages
+            self.writing(bot, chat_id, msg)
         # log status
         logger.info(f"Chat {chat_id} in INITIALIZATION... DONE!")
 

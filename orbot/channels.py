@@ -308,13 +308,13 @@ class Channels:
             chat = bot.getChat(chat_id)
             # Load icon type channel
             icon_string = self.getIcons(context, chat_id)
-            text += f" - [{icon_string}] {chat.title}\n"
+            text += f" - {icon_string} {chat.title}\n" if icon_string else f" - {chat.title}\n"
         if self.groups:
             text += "<b>New groups:</b>\n"
         for chat_id in self.groups:
             chat = context.bot.getChat(chat_id)
-            isChannel = '📢' if chat.type == 'channel' else ''
-            text += f" - [{isChannel}] {chat.title}\n"
+            isChannel = '[📢] ' if chat.type == 'channel' else ''
+            text += f" - {isChannel}{chat.title}\n"
         return text
 
     @filter_channel
