@@ -120,6 +120,7 @@ class ORbot:
 
 
     def runner(self):
+        bot = self.updater.bot
         # Start the Bot
         self.updater.start_polling()
         # Run the bot until you press Ctrl-C or the process receives SIGINT,
@@ -127,10 +128,10 @@ class ORbot:
         # start_polling() is non-blocking and will stop the bot gracefully.
         self.updater.idle()
         # Switch all recording if are actives
-        self.record.close_all_records(self.bot)
+        self.record.close_all_records(bot)
         # Send a switch off message
-        infobot = self.bot.get_me()
-        notify_group(self.bot, self.LIST_OF_ADMINS, f"💤 Switch off *{infobot.first_name}*")
+        infobot = bot.get_me()
+        notify_group(bot, self.LIST_OF_ADMINS, f"💤 Switch off *{infobot.first_name}*")
 
     @register
     @filter_channel
