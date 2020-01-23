@@ -629,7 +629,7 @@ class Channels:
             # get messages
             messages = self.get_channels_config(context, keyID)
             # Make text
-            text += f"<b>{chat.title}*\n"
+            text += f"<b>{chat.title}</b>\n"
             text += f" - <b>ID:</b> {chat_id}\n"
             link = chat.invite_link if chat.invite_link is not None else "not available"
             text += f" - <b>Link:</b> {link}\n"
@@ -638,7 +638,7 @@ class Channels:
         else:
             text += self.get_channels_name(context)
         # edit message
-        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        query.edit_message_text(text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
 # EOF
