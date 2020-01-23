@@ -294,17 +294,19 @@ class Record:
     def get_folders(self, context, user_id, keyID):
         buttons = []
         # List all folders
-        for folder in os.listdir(self.records_folder):
+        folder_list = [folder for folder in os.listdir(self.records_folder) if os.path.isdir(f"{self.records_folder}/{folder}")]
+        for folder in folder_list:
             chat_id = "-" + folder
             try:
                 chat = context.bot.getChat(chat_id)
                 title = chat.title
+                user_chat = context.bot.get_chat_member(chat_id, user_id)
+                user_status = user_chat.status not in ['left', 'kicked']
             except BadRequest:
                 logger.warning(f"This {chat_id} does not exist!")
                 title = f'No name {chat_id}'
-                continue
-            user_chat = context.bot.get_chat_member(chat_id, user_id)
-            if user_chat.status not in ['left', 'kicked'] and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
+                user_status = True
+            if user_status and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
                 buttons += [InlineKeyboardButton(title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
         if buttons:

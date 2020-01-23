@@ -302,15 +302,15 @@ class Channels:
         # Sort channels
         channels = sorted(self.settings['channels'].items(), key=lambda kv:(bot.getChat(kv[0]).title, kv[1]))
         if not channels:
-            return "*No channels*"
-        text = "*Channels:*\n"
+            return "<b>No channels</b>"
+        text = "<b>Channels:</b>\n"
         for chat_id, _ in channels:
             chat = bot.getChat(chat_id)
             # Load icon type channel
             icon_string = self.getIcons(context, chat_id)
             text += f" - [{icon_string}] {chat.title}\n"
         if self.groups:
-            text += "*New groups:*\n"
+            text += "<b>New groups:</b>\n"
         for chat_id in self.groups:
             chat = context.bot.getChat(chat_id)
             isChannel = '📢' if chat.type == 'channel' else ''
