@@ -213,6 +213,8 @@ class Record:
                 # Convert all timestamps in datetime
                 for msg in data[chat_id]['msgs']:
                     msg['date'] = datetime.fromtimestamp(msg['date'])
+                    # Manage 
+                    msg['edit'] = False if 'edit' not in msg else msg['edit']
                 # Restore all recording
                 self.recording[int(chat_id)] = {'status': status, 'msgs': deque(data[chat_id]['msgs'], maxlen=size_record_chat)}
         # Job queue
