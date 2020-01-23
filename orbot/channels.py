@@ -36,9 +36,10 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Bot, TelegramError
 from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageContent, InlineQueryResultCachedPhoto, InlineQueryResultPhoto
 from telegram.utils.helpers import escape_markdown
+from telegram.error import BadRequest
 
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, save_config
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, save_config, notify_group
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -115,6 +116,15 @@ class Channels:
         dp.add_handler(CallbackQueryHandler(self.ch_cancel, pattern='CH_CANCEL'))
         # on noncommand i.e message - echo the message on Telegram
         dp.add_handler(InlineQueryHandler(self.inlinequery))
+        # Check channels
+        for chat_id in list(self.settings['channels'].keys()):
+            try:
+                chat = self.updater.bot.getChat(chat_id)
+                logger.info(f"Load {chat_id} from list: {chat.title}")
+            except BadRequest:
+                del self.settings['channels'][chat_id]
+                logger.warning(f"This channel {chat_id} does not exist!")
+                notify_group(self.updater.bot, self.LIST_OF_ADMINS, f"This channel *{chat_id}* does not exist!")
 
     def register_chat(self, update, context):
         type_chat = update.effective_chat.type
@@ -383,15 +393,15 @@ class Channels:
                     InlineKeyboardButton("🧹 Remove", callback_data=f"CH_REMOVE {keyID}")]
         reply_markup = InlineKeyboardMarkup(build_menu(buttons, 2, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"CH_CANCEL {keyID} {chat_id}")))
         # Make message
-        text = f"*{chat.title}*\n"
-        text += f" - *ID:* {chat_id}\n"
+        text = f"<b>{chat.title}</b>\n"
+        text += f" - <b>ID:</b> {chat_id}\n"
         link = chat.invite_link if chat.invite_link is not None else "not available"
-        text += f" - *Link:* {link}\n"
+        text += f" - <b>Link:</b> {link}\n"
         # for k, v in context.user_data[keyID].items():
         #    if k == 'type':
         #        v = Channels.TYPE[v]['name']
         #    text += f" - {k}={v}\n"
-        query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
     @check_key_id('Error message')
     def ch_link(self, update, context):
@@ -566,18 +576,18 @@ class Channels:
         # Save to CSV file
         save_config(self.settings_file, self.settings)
         # Make message
-        text = f"*Stored*\n"
+        text = f"<b>Stored</b>\n"
         # get messages
         messages = self.get_channels_config(context, keyID)
         # Make text
-        text += f"*{chat.title}*\n"
-        text += f" - *ID:* {chat_id}\n"
+        text += f"<b>{chat.title}</b>\n"
+        text += f" - <b>ID:</b> {chat_id}\n"
         link = chat.invite_link if chat.invite_link is not None else "not available"
-        text += f" - *Link:* {link}\n"
+        text += f" - <b>Link:</b> {link}\n"
         for value in messages.values():
             text += f" - {value}\n"
         # edit message
-        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        query.edit_message_text(text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
 
@@ -597,9 +607,12 @@ class Channels:
             # Remove from groups list
             self.groups.remove(chat_id)
         # edit message
-        text = f"*Removed*\n"
-        text += f"*{chat.title}*\n"
-        query.edit_message_text(text=text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        text = f"<b>Removed</b>\n"
+        text += f"<b>{chat.title}</b>\n"
+        text += f" - <b>ID:</b> {chat_id}\n"
+        link = chat.invite_link if chat.invite_link is not None else "not available"
+        text += f" - <b>Link:</b> {link}\n"
+        query.edit_message_text(text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         # remove key from user_data list
         del context.user_data[keyID]
 
@@ -609,17 +622,17 @@ class Channels:
         data = query.data.split()
         # Extract keyID, chat_id
         keyID = data[1]
-        text = f"*Abort*\n"
+        text = f"<b>Abort</b>\n"
         if len(data) > 2:
             chat_id = data[2]
             chat = context.bot.getChat(chat_id)
             # get messages
             messages = self.get_channels_config(context, keyID)
             # Make text
-            text += f"*{chat.title}*\n"
-            text += f" - *ID:* {chat_id}\n"
+            text += f"<b>{chat.title}*\n"
+            text += f" - <b>ID:</b> {chat_id}\n"
             link = chat.invite_link if chat.invite_link is not None else "not available"
-            text += f" - *Link:* {link}\n"
+            text += f" - <b>Link:</b> {link}\n"
             for value in messages.values():
                 text += f" - {value}\n"
         else:

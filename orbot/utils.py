@@ -42,6 +42,12 @@ OFFSET = 127462 - ord('A')
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def notify_group(bot, chats, text):
+    for chat_id in chats:
+        bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+
+
 def zip_record(file_name, dirName):
     """ Reference:
         https://thispointer.com/python-how-to-create-a-zip-archive-from-multiple-files-or-directory/

@@ -40,7 +40,7 @@ from uuid import uuid4
 import sys
 from threading import Thread
 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, register
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, register, notify_group
 from .channels import Channels
 from .config import Config
 from .announce import Announce
@@ -67,6 +67,8 @@ class ORbot:
         pass
 
     def __init__(self, settings_file):
+        # Send a message to all admins when the system is started
+        version = get_version()
         # Load settings
         self.settings_file = settings_file
         try:
@@ -87,6 +89,10 @@ class ORbot:
         # Make sure to set use_context=True to use the new context based callbacks
         # Post version 12 this will no longer be necessary
         self.updater = Updater(telegram['token'], use_context=True)
+        # Send startup message
+        infobot = self.updater.bot.get_me()
+        logger.info(f"Bot: {infobot}")
+        notify_group(self.updater.bot, self.LIST_OF_ADMINS, f"🤖 *{infobot.first_name}* (v{version}) started!")
         # Settings manager
         self.channels = Channels(self.updater, self.settings, self.settings_file)
         # Configuration manager
@@ -111,14 +117,7 @@ class ORbot:
         dp.add_handler(add_group_handle)
         # log all errors
         dp.add_error_handler(self.error)
-        # Send a message to all admins when the system is started
-        version = get_version()
-        # Run the bot and send a welcome message
-        self.bot = Bot(token=telegram['token'])
-        infobot = self.bot.get_me()
-        logger.info(f"Bot: {infobot}")
-        for user_chat_id in self.LIST_OF_ADMINS:
-            self.bot.send_message(chat_id=user_chat_id, text=f"🤖 *{infobot.first_name}* (v{version}) started!", parse_mode='Markdown')
+
 
     def runner(self):
         # Start the Bot
@@ -131,10 +130,7 @@ class ORbot:
         self.record.close_all_records(self.bot)
         # Send a switch off message
         infobot = self.bot.get_me()
-        for user_chat_id in self.LIST_OF_ADMINS:
-            self.bot.send_message(chat_id=user_chat_id, text=f"💤 Switch off *{infobot.first_name}*", parse_mode='Markdown')
-
-
+        notify_group(self.bot, self.LIST_OF_ADMINS, f"💤 Switch off *{infobot.first_name}*")
 
     @register
     @filter_channel
@@ -155,8 +151,7 @@ class ORbot:
     @restricted
     def restart(self, update, context):
         infobot = self.bot.get_me()
-        for user_chat_id in self.LIST_OF_ADMINS:
-            context.bot.send_message(chat_id=user_chat_id, text=f'⚙️ *{infobot.first_name}* is restarting...', parse_mode='Markdown')
+        notify_group(self.bot, self.LIST_OF_ADMINS, f'⚙️ *{infobot.first_name}* is restarting...')
         Thread(target=self.stop_and_restart).start()
 
     @register

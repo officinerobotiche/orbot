@@ -49,7 +49,7 @@ import shutil
 from urllib.parse import urlparse
 from os.path import splitext, basename
 # Menu 
-from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record, save_config
+from .utils import build_menu, check_key_id, isAdmin, filter_channel, restricted, rtype, zip_record, save_config, register
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -298,7 +298,11 @@ class Record:
             chat_id = "-" + folder
             user_chat = context.bot.get_chat_member(chat_id, user_id)
             if user_chat.status not in ['left', 'kicked'] and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
-                chat = context.bot.getChat(chat_id)
+                try:
+                    chat = context.bot.getChat(chat_id)
+                except BadRequest:
+                    logger.warning(f"This {chat_id} does not exist!")
+                    continue
                 buttons += [InlineKeyboardButton(chat.title, callback_data=f"REC_DATA {keyID} {folder}")]
         # Build reply markup
         if buttons:
@@ -312,28 +316,31 @@ class Record:
     def get_records_list(self, context, keyID, folder_chat):
         path = f"{self.records_folder}/{folder_chat}"
         buttons = []
+        chat_id = "-" + folder_chat
+        try:
+            chat = context.bot.getChat(chat_id)
+            title = chat.title
+        except BadRequest:
+            title = f'No name {chat_id}'
+        message = 'No records'
+        reply_markup = InlineKeyboardMarkup(buttons)
         if os.path.isdir(path):
             list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
             context.user_data[keyID]['folder'] = sorted(list_dir)
             for idx, rec in enumerate(context.user_data[keyID]['folder']):
-                chat_id = "-" + folder_chat
                 if int(chat_id) in self.recording:
                     if self.recording[int(chat_id)]['status'] in [WRITING, WAIT_STOP]:
                         continue
                 filename = str(datetime.fromtimestamp(int(rec)))
                 buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
             # Build reply markup
-            chat_id = "-" + folder_chat
-            chat = context.bot.getChat(chat_id)
-        if buttons:
-            message = f"📼 *Records* _from_ {chat.title}"
-            reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
-        else:
-            message = 'No records'
-            reply_markup = InlineKeyboardMarkup(buttons)
+            if buttons:
+                message = f"📼 *Records* _from_ {title}"
+                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
         return message, reply_markup
 
     @rtype(['private', 'channel'])
+    @register
     def records(self, update, context):
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
@@ -442,6 +449,7 @@ class Record:
         query.edit_message_text(text="<b>Abort</b>", parse_mode='HTML')
 
     @rtype(['channel'])
+    @register
     def player(self, update, context):
         chat_id = update.effective_chat.id
         # Filter and update data channel
@@ -608,6 +616,7 @@ class Record:
         doc = Downloader(newFile, document, file_name)
         doc.start()
 
+    @register
     def record_document(self, update, context):
         # Filter and update data channel
         if self.record_filter(update, context):
@@ -650,6 +659,7 @@ class Record:
         doc.start()
         return msg
 
+    @register
     def record_photo(self, update, context):
         # Filter and update data channel
         if self.record_filter(update, context):
@@ -666,6 +676,7 @@ class Record:
             # Write message
             self.writing(context.bot, chat_id, msg)
 
+    @register
     def record(self, update, context):
         #if update.edit_message is not None:
         #    print(update.edit_message.text)
