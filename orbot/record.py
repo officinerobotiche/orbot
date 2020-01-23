@@ -286,8 +286,8 @@ class Record:
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
-                text = f"💤 Switch off *{infobot.first_name}*"
-                msg = bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+                text = f"💤 Switch off <b>{infobot.first_name}</b>"
+                msg = bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
                 data[chat_id]['edit_msg'] = msg.message_id
             # Store records
             for msg in self.recording[chat_id]['msgs']:
@@ -374,7 +374,7 @@ class Record:
             title = chat.title
         except BadRequest:
             title = f'No name {chat_id}'
-        message = 'No records'
+        message = f'<b>No records</b> <i>from</i> {title}'
         reply_markup = InlineKeyboardMarkup(buttons)
         if os.path.isdir(path):
             list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
@@ -387,7 +387,7 @@ class Record:
                 buttons += [InlineKeyboardButton("📼 " + filename, callback_data=f"REC_DOWNLOAD {keyID} {idx}")]
             # Build reply markup
             if buttons:
-                message = f"📼 *Records* _from_ {title}"
+                message = f"📼 <b>Records</b> <i>from</i> {title}"
                 reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID} {folder_chat}")))
         return message, reply_markup
 
@@ -410,7 +410,7 @@ class Record:
             context.user_data[keyID]['folder_name'] = folder_name
             message, reply_markup = self.get_records_list(context, keyID, folder_name)
         # Send message
-        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='Markdown', reply_markup=reply_markup)
+        context.bot.send_message(chat_id=update.effective_user.id, text=message, parse_mode='HTML', reply_markup=reply_markup)
 
     @check_key_id('Error message')
     def rec_folder(self, update, context):
@@ -422,7 +422,7 @@ class Record:
         context.user_data[keyID]['folder_name'] = folder_chat
         # Make list of records
         message, reply_markup = self.get_records_list(context, keyID, folder_chat)
-        query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='Markdown')
+        query.edit_message_text(text=message, reply_markup=reply_markup, parse_mode='HTML')
 
     @check_key_id('Error message')
     def rec_download(self, update, context):
@@ -445,11 +445,10 @@ class Record:
             buttons = [InlineKeyboardButton("📼 Download", callback_data=f"REC_DOWNLOAD {keyID} {folder_idx} download"),
                        InlineKeyboardButton("🧹 Remove", callback_data=f"REC_DOWNLOAD {keyID} {folder_idx} delete")]
             reply_markup = InlineKeyboardMarkup(build_menu(buttons, 3, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
-            text = f"📼 {filename} _from_ {chat.title}"
-            query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode='Markdown')
+            text = f"📼 {filename} <i>from</i> {chat.title}"
+            query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode='HTML')
         else:
             if option == 'download':
-                #query.edit_message_text(text=text, parse_mode='Markdown')
                 context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
                 # Record information
                 self.send_record(context.bot, chat_id, folder_chat, folder_download)
@@ -457,8 +456,8 @@ class Record:
                 # Remove file
                 shutil.rmtree(path_document)
                 # Write text information
-                text = f"🧹 *Removed* 📼 {filename} _from_ {chat.title}"
-                query.edit_message_text(text=text, parse_mode='Markdown')
+                text = f"🧹 <b>Removed</b> 📼 {filename} <i>from</i> {chat.title}"
+                query.edit_message_text(text=text, parse_mode='HTML')
             # remove key from user_data list
             del context.user_data[keyID]
 
@@ -484,7 +483,7 @@ class Record:
             # make final path
             document = f"{path_document}/{file_record}"
         # Sending file
-        bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 _from_ {chat.title}", parse_mode='Markdown')
+        bot.send_document(chat_id=chat_id, document=open(document, 'rb'), caption=f"📼 <i>from</i> {chat.title}", parse_mode='HTML')
         # Remove zip file if exist
         if os.path.isfile(f"{path_document}/{filename}.zip"):
             os.remove(f"{path_document}/{filename}.zip")
@@ -580,7 +579,7 @@ class Record:
                 self.cb_stop(bot, message_id, chat_id, data, user)
         else:
             text = "Error message"
-            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id)
             
     def job_timer_reset(self, chat_id):
         # Stop the timer
