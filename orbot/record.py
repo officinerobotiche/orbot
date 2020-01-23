@@ -228,6 +228,8 @@ class Record:
         dp.add_handler(photo_handler)
         document_handler = MessageHandler(Filters.document, self.record_document)
         dp.add_handler(document_handler)
+        voice_handler = MessageHandler(Filters.voice, self.record_voice)
+        dp.add_handler(voice_handler)
         # Query player
         dp.add_handler(CommandHandler('player', self.player))
         dp.add_handler(CallbackQueryHandler(self.player_control, pattern='REC_PLAYER'))
@@ -608,6 +610,44 @@ class Record:
             self.job_timer_reset(chat_id)
         return False
 
+    def save_voice(self, bot, chat_id, msg):
+        # Get file id picture big size
+        file_id = msg['voice']
+        newFile = bot.get_file(file_id)
+        # Get filename
+        # https://stackoverflow.com/questions/10552188/python-split-url-to-find-image-name-and-extension
+        picture_page = newFile.file_path
+        disassembled = urlparse(picture_page)
+        file_name = basename(disassembled.path)
+        # Write text
+        msg['text'] = f"Attached voice {file_name}"
+        # Attention chat in absolute value !!!!!!!!!!!!!
+        folder_name = str(chat_id)[1:]
+        folder_record = self.recording[chat_id]['folder_record']
+        # Path document
+        document = f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}"
+        # Download the document
+        doc = Downloader(newFile, document, file_name)
+        doc.start()
+        return msg
+
+    @register
+    def record_voice(self, update, context):
+        # Filter and update data channel
+        if self.record_filter(update, context):
+            return
+        chat_id = update.effective_chat.id
+        # Make message
+        msg = make_dict_message(update, '')
+        # Add photo message information
+        msg['voice'] = update.message.voice.file_id
+        # Add message in queue text
+        self.recording[chat_id]['msgs'].append(msg)
+        # Recording funcions
+        if self.recording[chat_id]['status'] in [WRITING]:
+            # Write message
+            self.writing(context.bot, chat_id, msg)
+
     def save_document(self, bot, chat_id, msg):
         # Get file id picture big size
         file_id = msg['document']['file_id']
@@ -765,6 +805,9 @@ class Record:
         # Save photo if is included in msg
         if 'photo' in msg:
             self.save_foto(bot, chat_id, msg)
+        # Save voice if is included in msg
+        if 'voice' in msg:
+            self.save_voice(bot, chat_id, msg)
         # Append new line on file
         with open(f"{self.records_folder}/{folder_name}/{folder_record}/{file_name}", "a") as f:
             data = [str(msg[name]) for name in MSG_TEXT_ORDER]
