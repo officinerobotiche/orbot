@@ -296,6 +296,25 @@ class Record:
         # Save configuration
         save_config(f"{self.records_folder}/{RECORDS_FILE}", data)
 
+    def get_folders_text(self, context, user_id):
+        folder_list = [folder for folder in os.listdir(self.records_folder) if os.path.isdir(f"{self.records_folder}/{folder}")]
+        if not folder_list:
+            return f"<b>No records!</b>"
+        text = "<b>📼 Records:</b>\n"
+        for folder in folder_list:
+            chat_id = "-" + folder
+            try:
+                chat = context.bot.getChat(chat_id)
+                title = chat.title
+                user_chat = context.bot.get_chat_member(chat_id, user_id)
+                user_status = user_chat.status not in ['left', 'kicked']
+            except BadRequest:
+                title = f'No name {chat_id}'
+                user_status = True
+            if user_status and len(os.listdir(f"{self.records_folder}/{folder}") ) != 0:
+                text += f" - {title}\n"
+        return text
+
     def get_folders(self, context, user_id, keyID):
         buttons = []
         # List all folders
@@ -322,6 +341,30 @@ class Record:
             reply_markup = InlineKeyboardMarkup(buttons)
         return message, reply_markup
 
+    def get_records_text(self, context, keyID, folder_chat):
+        path = f"{self.records_folder}/{folder_chat}"
+        chat_id = "-" + folder_chat
+        try:
+            chat = context.bot.getChat(chat_id)
+            title = chat.title
+        except BadRequest:
+            title = f'No name {chat_id}'
+        folder_text = ""
+        if os.path.isdir(path):
+            list_dir = [x for x in os.listdir(path) if os.path.isdir(os.path.join(path, x))]
+            for rec in list_dir:
+                if int(chat_id) in self.recording:
+                    if self.recording[int(chat_id)]['status'] in [WRITING, WAIT_STOP]:
+                        continue
+                filename = str(datetime.fromtimestamp(int(rec)))
+                folder_text += f" - 📼 {filename}\n"
+        if folder_text:
+            text = f"<b>Records</b> <i>from</i> {title}\n"
+            text += folder_text
+        else:
+            text = f'<b>No records</b> <i>from</i> {title}'
+        return text
+
     def get_records_list(self, context, keyID, folder_chat):
         path = f"{self.records_folder}/{folder_chat}"
         buttons = []
@@ -345,7 +388,7 @@ class Record:
             # Build reply markup
             if buttons:
                 message = f"📼 *Records* _from_ {title}"
-                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID}")))
+                reply_markup = InlineKeyboardMarkup(build_menu(buttons, 1, footer_buttons=InlineKeyboardButton("Cancel", callback_data=f"REC_CN {keyID} {folder_chat}")))
         return message, reply_markup
 
     @rtype(['private', 'channel'])
@@ -450,12 +493,19 @@ class Record:
     def rec_cancel(self, update, context):
         query = update.callback_query
         data = query.data.split()
+        user_id = update.effective_user.id
         # Extract keyID, chat_id and title
         keyID = data[1]
+        text = "<b>Abort</b>\n"
+        if len(data) > 2:
+            folder_chat = data[2]
+            text += self.get_records_text(context, keyID, folder_chat)
+        else:
+            text += self.get_folders_text(context, user_id)
+        # edit message
+        query.edit_message_text(text=text, parse_mode='HTML')
         # remove key from user_data list
         del context.user_data[keyID]
-        # edit message
-        query.edit_message_text(text="<b>Abort</b>", parse_mode='HTML')
 
     @rtype(['channel'])
     @register

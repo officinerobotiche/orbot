@@ -151,6 +151,10 @@ class ORbot:
     @rtype(['private'])
     @restricted
     def restart(self, update, context):
+        bot = self.updater.bot
+        # Switch all recording if are actives
+        self.record.close_all_records(bot)
+        # Notify all users
         infobot = context.bot.get_me()
         notify_group(context.bot, self.LIST_OF_ADMINS, f'⚙️ *{infobot.first_name}* is restarting...')
         Thread(target=self.stop_and_restart).start()
