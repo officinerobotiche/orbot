@@ -151,8 +151,8 @@ class ORbot:
     @rtype(['private'])
     @restricted
     def restart(self, update, context):
-        infobot = self.bot.get_me()
-        notify_group(self.bot, self.LIST_OF_ADMINS, f'⚙️ *{infobot.first_name}* is restarting...')
+        infobot = context.bot.get_me()
+        notify_group(context.bot, self.LIST_OF_ADMINS, f'⚙️ *{infobot.first_name}* is restarting...')
         Thread(target=self.stop_and_restart).start()
 
     @register
