@@ -959,9 +959,9 @@ class Record:
                     job.enabled = False  # Temporarily disable this job
                     job.schedule_removal()  # Remove this job completely
                 # Message to send
-                text = f"📼 *Recording*...\n"
-                text += f"_[replied by {user.name}]_"
-                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                text = f"📼 <b>Recording</b>...\n"
+                text += f"<i>[replied by {user.name}]</i>"
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='HTML')
             else:
                 self.recording[chat_id]['status'] = IDLE
                 # Clear wait autorestart
@@ -970,8 +970,8 @@ class Record:
                         self.recording[chat_id]['delay_autorestart'] = True
                 # Send the message
                 text = f"😉 Doesn't matter\n"
-                text += f"_[replied by {user.name}]_"
-                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                text += f"<i>[replied by {user.name}]</i>"
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='HTML')
             # Clear autorestart status
             if 'autorestart' in self.recording[chat_id]:
                 self.recording[chat_id]['autorestart'] = False
@@ -983,7 +983,7 @@ class Record:
                 self.recording[chat_id]['job_delay_autorestart'] = self.job.run_once(self.reset_delay_autorestart, d_start, context=chat_id)
         else:
             text = "Error message"
-            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id)
 
     def reset_delay_autorestart(self, context: CallbackContext):
         # Extract chat ids
@@ -1030,17 +1030,17 @@ class Record:
                 # Set in idle mode
                 self.recording[chat_id]['status'] = IDLE
                 # Send message
-                text = f"🛑 Recording *stop*!\n"
-                text += f"_[replied by {user.name}]_"
-                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                text = f"🛑 Recording <b>stop</b>!\n"
+                text += f"<i>[replied by {user.name}]</i>"
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='HTML')
             else:
                 self.recording[chat_id]['status'] = WRITING
                 # Start timer
                 self.job_timer_reset(chat_id)
                 # Send the message
-                text = f"📼 *Recording*...\n"
-                text += f"_[replied by {user.name}]_"
-                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+                text = f"📼 <b>Recording</b>...\n"
+                text += f"<i>[replied by {user.name}]</i>"
+                bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='HTML')
         else:
             text = "Error message"
-            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id, parse_mode='Markdown')
+            bot.edit_message_text(chat_id=chat_id, text=text, message_id=message_id)
